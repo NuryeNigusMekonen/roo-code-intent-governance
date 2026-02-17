@@ -90,6 +90,7 @@ import { calculateApiCostAnthropic, calculateApiCostOpenAI } from "../../shared/
 import { getWorkspacePath } from "../../utils/path"
 import { sanitizeToolUseId } from "../../utils/tool-id"
 import { getTaskDirectoryPath } from "../../utils/storage"
+import { safeAppendJsonl } from "../../utils/safeAppendJsonl"
 
 // prompts
 import { formatResponse } from "../prompts/responses"
@@ -2237,6 +2238,29 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		const tokenUsage = this.getTokenUsage()
 		this.debouncedEmitTokenUsage(tokenUsage, this.toolUsage)
 		this.debouncedEmitTokenUsage.flush()
+	}
+
+	/**
+	 * Append an entry to the per-task agent trace JSONL file.
+	 * The written object is enriched with `ts` (ISO timestamp) and `taskId`.
+	 */
+	public async appendAgentTrace(event: unknown): Promise<void> {
+		try {
+			const taskDir = await getTaskDirectoryPath(this.globalStoragePath, this.taskId)
+			const tracePath = path.join(taskDir, "agent_trace.jsonl")
+			let record: any
+			if (event && typeof event === "object" && !Array.isArray(event)) {
+				record = { ...(event as Record<string, any>) }
+			} else {
+				record = { event }
+			}
+			record.ts = new Date().toISOString()
+			record.taskId = this.taskId
+			await safeAppendJsonl(tracePath, record)
+		} catch (err) {
+			console.error(`Failed to append agent trace for task ${this.taskId}:`, err)
+			throw err
+		}
 	}
 
 	public async abortTask(isAbandoned = false) {
