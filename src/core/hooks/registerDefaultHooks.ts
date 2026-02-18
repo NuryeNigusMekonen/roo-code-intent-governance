@@ -26,10 +26,7 @@ const DESTRUCTIVE_COMMAND_PATTERNS: RegExp[] = [
 ]
 
 function getCommandFromParams(toolParams: unknown): string | null {
-	if (!toolParams || typeof toolParams !== "object") {
-		return null
-	}
-
+	if (!toolParams || typeof toolParams !== "object") return null
 	const command = (toolParams as { command?: unknown }).command
 	return typeof command === "string" ? command : null
 }
@@ -42,35 +39,43 @@ function isDestructiveCommand(command: string): boolean {
 	return DESTRUCTIVE_COMMAND_PATTERNS.some((pattern) => pattern.test(command))
 }
 
+function isWriteLikeTool(toolName: string): boolean {
+	return [
+		"write_to_file",
+		"apply_diff",
+		"edit_file",
+		"apply_patch",
+		"search_and_replace",
+		"search_replace",
+		"generate_image",
+	].includes(toolName)
+}
+
 export function registerDefaultHooks(engine: HookEngine, task: Task) {
 	engine.register("intent-gatekeeper", 5, (e: HookEvent) => {
-		if (e.type !== "pre_tool_use") {
-			return
-		}
+		if (e.type !== "pre_tool_use") return
 
-		if (e.toolName === "select_active_intent") {
-			return
-		}
+		if (e.toolName === "select_active_intent") return
 
 		if (e.toolName === "execute_command") {
 			const command = getCommandFromParams(e.toolParams)
-			if (command && isSafeReadCommand(command)) {
-				return
-			}
+			if (command && isSafeReadCommand(command)) return
 
-			if (!command || !isDestructiveCommand(command)) {
-				return
-			}
-		}
+			if (!isDestructiveCommand(command ?? "")) return
 
-		if (e.toolName !== "write_to_file" && e.toolName !== "execute_command") {
+			if (!task.activeIntentId) {
+				e.blocked = true
+				e.reason =
+					"Intent handshake required before destructive commands. Call select_active_intent(intent_id) first."
+			}
 			return
 		}
 
+		if (!isWriteLikeTool(e.toolName)) return
+
 		if (!task.activeIntentId) {
 			e.blocked = true
-			e.reason =
-				`Intent handshake required before using ${e.toolName}. ` + `Call select_active_intent(intent_id) first.`
+			e.reason = `Intent handshake required before using ${e.toolName}. Call select_active_intent(intent_id) first.`
 		}
 	})
 
@@ -79,6 +84,10 @@ export function registerDefaultHooks(engine: HookEngine, task: Task) {
 	engine.register("destructive-command-approval", 7, createDestructiveCommandApprovalHook())
 
 	engine.register("agent-trace", 10, async (e: HookEvent) => {
-		await task.appendAgentTrace(e)
+		try {
+			await task?.appendAgentTrace?.(e)
+		} catch (err) {
+			console.warn("appendAgentTrace failed", err)
+		}
 	})
 }

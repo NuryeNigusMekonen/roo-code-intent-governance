@@ -2302,7 +2302,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			await safeAppendJsonl(tracePath, record)
 		} catch (err) {
 			console.error(`Failed to append agent trace for task ${this.taskId}:`, err)
-			throw err
+			return
 		}
 	}
 

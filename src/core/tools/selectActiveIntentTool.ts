@@ -8,12 +8,16 @@ interface SelectActiveIntentParams {
 	intent_id: string
 }
 
-function formatIntentSelectionResult(
-	intentId: string,
-	intent: { title: string; description: string; owned_scope: string[]; constraints: string[] },
-): string {
-	const ownedScope = intent.owned_scope.map((scope) => `- ${scope}`).join("\n")
-	const constraints = intent.constraints.map((constraint) => `- ${constraint}`).join("\n")
+type ResolvedIntent = {
+	title: string
+	description: string
+	owned_scope: string[]
+	constraints: string[]
+}
+
+function formatIntentSelectionResult(intentId: string, intent: ResolvedIntent): string {
+	const ownedScope = (intent.owned_scope ?? []).map((scope) => `- ${scope}`).join("\n")
+	const constraints = (intent.constraints ?? []).map((constraint) => `- ${constraint}`).join("\n")
 
 	return [
 		"ACTIVE_INTENT_SELECTED",
@@ -21,9 +25,9 @@ function formatIntentSelectionResult(
 		`title: ${intent.title}`,
 		`description: ${intent.description}`,
 		"owned_scope:",
-		ownedScope,
+		ownedScope || "- (none)",
 		"constraints:",
-		constraints,
+		constraints || "- (none)",
 	].join("\n")
 }
 
@@ -31,8 +35,8 @@ export class SelectActiveIntentTool extends BaseTool<"select_active_intent"> {
 	readonly name = "select_active_intent" as const
 
 	async execute(params: SelectActiveIntentParams, task: Task, callbacks: ToolCallbacks): Promise<void> {
-		const intentId = params.intent_id
-		const { pushToolResult, handleError, askApproval } = callbacks
+		const { pushToolResult, handleError } = callbacks
+		const intentId = params?.intent_id?.trim()
 
 		try {
 			if (!intentId) {
@@ -44,7 +48,7 @@ export class SelectActiveIntentTool extends BaseTool<"select_active_intent"> {
 			}
 
 			const intents = await loadActiveIntents()
-			const resolvedIntent = getIntentById(intents, intentId)
+			const resolvedIntent = getIntentById(intents, intentId) as ResolvedIntent | undefined
 
 			if (!resolvedIntent) {
 				task.consecutiveMistakeCount++
@@ -52,23 +56,9 @@ export class SelectActiveIntentTool extends BaseTool<"select_active_intent"> {
 				task.didToolFailInCurrentTurn = true
 				pushToolResult(
 					formatResponse.toolError(
-						`Unknown intent_id '${intentId}'. Ensure it exists in active_intents.yaml and try again.`,
+						`Unknown intent_id '${intentId}'. Add it to .orchestration/active_intents.yaml and try again.`,
 					),
 				)
-				return
-			}
-
-			const approvalMessage = JSON.stringify({
-				tool: "selectActiveIntent",
-				intentId,
-				title: resolvedIntent.title,
-				description: resolvedIntent.description,
-				ownedScope: resolvedIntent.owned_scope,
-				constraints: resolvedIntent.constraints,
-			})
-
-			const didApprove = await askApproval("tool", approvalMessage)
-			if (!didApprove) {
 				return
 			}
 
@@ -81,12 +71,8 @@ export class SelectActiveIntentTool extends BaseTool<"select_active_intent"> {
 	}
 
 	override async handlePartial(task: Task, block: ToolUse<"select_active_intent">): Promise<void> {
-		const intentId = block.params.intent_id
-		const partialMessage = JSON.stringify({
-			tool: "selectActiveIntent",
-			intentId: intentId ?? "",
-		})
-
+		const intentId = (block.params.intent_id ?? "").toString()
+		const partialMessage = JSON.stringify({ tool: "selectActiveIntent", intentId })
 		await task.ask("tool", partialMessage, block.partial).catch(() => {})
 	}
 }

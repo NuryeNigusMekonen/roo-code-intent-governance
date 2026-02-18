@@ -47,7 +47,6 @@ describe("selectActiveIntentTool", () => {
 
 		expect(loadActiveIntents).toHaveBeenCalledWith()
 		expect(getIntentById).toHaveBeenCalledWith({ "INT-001": intent }, "INT-001")
-		expect(askApproval).toHaveBeenCalledTimes(1)
 		expect(mockSetActiveIntent).toHaveBeenCalledWith("INT-001", intent)
 		expect(pushToolResult).toHaveBeenCalledWith(expect.stringContaining("ACTIVE_INTENT_SELECTED"))
 	})
