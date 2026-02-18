@@ -26,11 +26,13 @@ describe("presentAssistantMessage - Unknown Tool Handling", () => {
 		mockTask = {
 			taskId: "test-task-id",
 			instanceId: "test-instance",
+			loopPhase: "execute",
 			abort: false,
 			presentAssistantMessageLocked: false,
 			presentAssistantMessageHasPendingUpdates: false,
 			currentStreamingContentIndex: 0,
 			assistantMessageContent: [],
+			pendingToolUses: [],
 			userMessageContent: [],
 			didCompleteReadingStream: false,
 			didRejectTool: false,
@@ -55,6 +57,9 @@ describe("presentAssistantMessage - Unknown Tool Handling", () => {
 			},
 			say: vi.fn().mockResolvedValue(undefined),
 			ask: vi.fn().mockResolvedValue({ response: "yesButtonClicked" }),
+			hooks: {
+				emit: vi.fn().mockResolvedValue(undefined),
+			},
 		}
 
 		// Add pushToolResultToUserContent method after mockTask is created so 'this' binds correctly
@@ -82,6 +87,7 @@ describe("presentAssistantMessage - Unknown Tool Handling", () => {
 				partial: false,
 			},
 		]
+		mockTask.pendingToolUses = mockTask.assistantMessageContent
 
 		// Execute presentAssistantMessage
 		await presentAssistantMessage(mockTask)
@@ -121,6 +127,7 @@ describe("presentAssistantMessage - Unknown Tool Handling", () => {
 				partial: false,
 			},
 		]
+		mockTask.pendingToolUses = mockTask.assistantMessageContent
 
 		// Execute presentAssistantMessage
 		await presentAssistantMessage(mockTask)
@@ -154,6 +161,7 @@ describe("presentAssistantMessage - Unknown Tool Handling", () => {
 				partial: false,
 			},
 		]
+		mockTask.pendingToolUses = mockTask.assistantMessageContent
 
 		// The test will timeout if the extension freezes
 		const timeoutPromise = new Promise<boolean>((_, reject) => {
@@ -185,6 +193,7 @@ describe("presentAssistantMessage - Unknown Tool Handling", () => {
 				partial: false,
 			},
 		]
+		mockTask.pendingToolUses = mockTask.assistantMessageContent
 
 		expect(mockTask.consecutiveMistakeCount).toBe(0)
 
@@ -204,6 +213,7 @@ describe("presentAssistantMessage - Unknown Tool Handling", () => {
 				partial: false,
 			},
 		]
+		mockTask.pendingToolUses = mockTask.assistantMessageContent
 
 		mockTask.didCompleteReadingStream = true
 		mockTask.userMessageContentReady = false
@@ -225,6 +235,7 @@ describe("presentAssistantMessage - Unknown Tool Handling", () => {
 				partial: false,
 			},
 		]
+		mockTask.pendingToolUses = mockTask.assistantMessageContent
 
 		mockTask.didRejectTool = true
 
@@ -238,5 +249,84 @@ describe("presentAssistantMessage - Unknown Tool Handling", () => {
 		expect(toolResult).toBeDefined()
 		expect(toolResult.is_error).toBe(true)
 		expect(toolResult.content).toContain("due to user rejecting a previous tool")
+	})
+
+	it("returns structured SCOPE_VIOLATION JSON when pre_tool_use is blocked", async () => {
+		const toolCallId = "tool_call_scope_blocked"
+		mockTask.assistantMessageContent = [
+			{
+				type: "tool_use",
+				id: toolCallId,
+				name: "write_to_file",
+				params: { path: "src/test.ts", content: "x" },
+				partial: false,
+			},
+		]
+		mockTask.pendingToolUses = mockTask.assistantMessageContent
+
+		mockTask.hooks.emit = vi.fn().mockImplementation(async (event: any) => {
+			if (event?.type === "pre_tool_use") {
+				event.blocked = true
+				event.reason = "Scope denied"
+			}
+		})
+
+		await presentAssistantMessage(mockTask)
+
+		const toolResult = mockTask.userMessageContent.find(
+			(item: any) => item.type === "tool_result" && item.tool_use_id === toolCallId,
+		)
+
+		expect(toolResult).toBeDefined()
+		expect(toolResult.is_error).toBe(true)
+
+		const parsed = JSON.parse(toolResult.content)
+		expect(parsed).toEqual({
+			error: {
+				code: "SCOPE_VIOLATION",
+				message: "Scope denied",
+				recoverable: true,
+			},
+		})
+	})
+
+	it("returns structured HITL_REJECTED JSON when pre_tool_use is blocked by HITL", async () => {
+		const toolCallId = "tool_call_hitl_blocked"
+		mockTask.assistantMessageContent = [
+			{
+				type: "tool_use",
+				id: toolCallId,
+				name: "execute_command",
+				params: { command: "rm -rf ." },
+				partial: false,
+			},
+		]
+		mockTask.pendingToolUses = mockTask.assistantMessageContent
+
+		mockTask.hooks.emit = vi.fn().mockImplementation(async (event: any) => {
+			if (event?.type === "pre_tool_use") {
+				event.blocked = true
+				event.reason = "Destructive operation rejected by user."
+				event.errorCode = "HITL_REJECTED"
+			}
+		})
+
+		await presentAssistantMessage(mockTask)
+
+		const toolResult = mockTask.userMessageContent.find(
+			(item: any) => item.type === "tool_result" && item.tool_use_id === toolCallId,
+		)
+
+		expect(toolResult).toBeDefined()
+		expect(toolResult.is_error).toBe(true)
+
+		const parsed = JSON.parse(toolResult.content)
+		expect(parsed).toEqual({
+			error: {
+				code: "HITL_REJECTED",
+				message: "Destructive operation rejected by user.",
+				recoverable: true,
+			},
+		})
 	})
 })

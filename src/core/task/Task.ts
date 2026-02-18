@@ -90,6 +90,7 @@ import { calculateApiCostAnthropic, calculateApiCostOpenAI } from "../../shared/
 import { getWorkspacePath } from "../../utils/path"
 import { sanitizeToolUseId } from "../../utils/tool-id"
 import { getTaskDirectoryPath } from "../../utils/storage"
+import { safeAppendJsonl } from "../../utils/safeAppendJsonl"
 
 // prompts
 import { formatResponse } from "../prompts/responses"
@@ -130,8 +131,11 @@ import { getMessagesSinceLastSummary, summarizeConversation, getEffectiveApiHist
 import { MessageQueueService } from "../message-queue/MessageQueueService"
 import { AutoApprovalHandler, checkAutoApproval } from "../auto-approval"
 import { MessageManager } from "../message-manager"
+import { HookEngine } from "../hooks/HookEngine"
+import { registerDefaultHooks } from "../hooks/registerDefaultHooks"
 import { validateAndFixToolResultIds } from "./validateToolResultIds"
 import { mergeConsecutiveApiMessages } from "./mergeConsecutiveApiMessages"
+import type { IntentDef } from "../intents/intentRegistry"
 
 const MAX_EXPONENTIAL_BACKOFF_SECONDS = 600 // 10 minutes
 const DEFAULT_USAGE_COLLECTION_TIMEOUT_MS = 5000 // 5 seconds
@@ -171,6 +175,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	readonly metadata: TaskMetadata
 
 	todoList?: TodoItem[]
+	activeIntentId: string | null = null
+	activeIntent: IntentDef | null = null
 
 	readonly rootTask: Task | undefined = undefined
 	readonly parentTask: Task | undefined = undefined
@@ -345,6 +351,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	currentStreamingContentIndex = 0
 	currentStreamingDidCheckpoint = false
 	assistantMessageContent: AssistantMessageContent[] = []
+	pendingToolUses: unknown[] = []
+	loopPhase: "decide" | "execute" = "decide"
 	presentAssistantMessageLocked = false
 	presentAssistantMessageHasPendingUpdates = false
 	userMessageContent: (Anthropic.TextBlockParam | Anthropic.ImageBlockParam | Anthropic.ToolResultBlockParam)[] = []
@@ -414,12 +422,15 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 	// Cloud Sync Tracking
 	private cloudSyncedMessageTimestamps: Set<number> = new Set()
+	private startedToolCalls = new Set<string>()
+	private endedToolCalls = new Set<string>()
 
 	// Initial status for the task's history item (set at creation time to avoid race conditions)
 	private readonly initialStatus?: "active" | "delegated" | "completed"
 
 	// MessageManager for high-level message operations (lazy initialized)
 	private _messageManager?: MessageManager
+	public readonly hooks = new HookEngine()
 
 	constructor({
 		provider,
@@ -498,6 +509,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		this.enableCheckpoints = enableCheckpoints
 		this.checkpointTimeout = checkpointTimeout
 		this.enableBridge = enableBridge
+		registerDefaultHooks(this.hooks, this)
 
 		this.parentTask = parentTask
 		this.taskNumber = taskNumber
@@ -741,6 +753,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	public async getTaskMode(): Promise<string> {
 		await this.taskModeReady
 		return this._taskMode || defaultModeSlug
+	}
+
+	public setActiveIntent(intentId: string | null, intent: IntentDef | null): void {
+		this.activeIntentId = intentId
+		this.activeIntent = intent
 	}
 
 	/**
@@ -2249,6 +2266,56 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		this.debouncedEmitTokenUsage.flush()
 	}
 
+	/**
+	 * Append an entry to the per-task agent trace JSONL file.
+	 * The written object is enriched with `ts` (ISO timestamp) and `taskId`.
+	 */
+	public async appendAgentTrace(event: unknown): Promise<void> {
+		try {
+			if (event && typeof event === "object" && !Array.isArray(event)) {
+				const traceEvent = event as { type?: string; toolCallId?: string }
+				const key = traceEvent.toolCallId
+
+				if (traceEvent.type === "tool_start") {
+					if (key) {
+						if (this.endedToolCalls.has(key)) {
+							return
+						}
+						if (this.startedToolCalls.has(key)) {
+							return
+						}
+						this.startedToolCalls.add(key)
+					}
+				}
+
+				if (traceEvent.type === "tool_end") {
+					if (key) {
+						if (this.endedToolCalls.has(key)) {
+							return
+						}
+						this.endedToolCalls.add(key)
+						this.startedToolCalls.delete(key)
+					}
+				}
+			}
+
+			const taskDir = await getTaskDirectoryPath(this.globalStoragePath, this.taskId)
+			const tracePath = path.join(taskDir, "agent_trace.jsonl")
+			let record: any
+			if (event && typeof event === "object" && !Array.isArray(event)) {
+				record = { ...(event as Record<string, any>) }
+			} else {
+				record = { event }
+			}
+			record.ts = new Date().toISOString()
+			record.taskId = this.taskId
+			await safeAppendJsonl(tracePath, record)
+		} catch (err) {
+			console.error(`Failed to append agent trace for task ${this.taskId}:`, err)
+			return
+		}
+	}
+
 	public async abortTask(isAbandoned = false) {
 		// Aborting task
 
@@ -2760,6 +2827,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				this.currentStreamingContentIndex = 0
 				this.currentStreamingDidCheckpoint = false
 				this.assistantMessageContent = []
+				this.pendingToolUses = []
+				this.loopPhase = "decide"
 				this.didCompleteReadingStream = false
 				this.userMessageContent = []
 				this.userMessageContentReady = false
@@ -2912,10 +2981,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 										// Store the ID for native protocol
 										;(partialToolUse as any).id = event.id
 
-										// Add to content and present
+										// Add to content (do not execute during streaming)
 										this.assistantMessageContent.push(partialToolUse)
 										this.userMessageContentReady = false
-										presentAssistantMessage(this)
 									} else if (event.type === "tool_call_delta") {
 										// Process chunk using streaming JSON parser
 										const partialToolUse = NativeToolCallParser.processStreamingChunk(
@@ -2930,11 +2998,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 												// Store the ID for native protocol
 												;(partialToolUse as any).id = event.id
 
-												// Update the existing tool use with new partial data
+												// Update the existing tool use with new partial data (no execution yet)
 												this.assistantMessageContent[toolUseIndex] = partialToolUse
-
-												// Present updated tool use
-												presentAssistantMessage(this)
 											}
 										}
 									} else if (event.type === "tool_call_end") {
@@ -2958,9 +3023,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 											// Mark that we have new content to process
 											this.userMessageContentReady = false
-
-											// Present the finalized tool call
-											presentAssistantMessage(this)
+											this.pendingToolUses.push(finalToolUse)
 										} else if (toolUseIndex !== undefined) {
 											// finalizeStreamingToolCall returned null (malformed JSON or missing args)
 											// Mark the tool as non-partial so it's presented as complete, but execution
@@ -2977,9 +3040,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 											// Mark that we have new content to process
 											this.userMessageContentReady = false
-
-											// Present the tool call - validation will handle missing params
-											presentAssistantMessage(this)
+											if (existingToolUse) {
+												this.pendingToolUses.push({ ...existingToolUse })
+											}
 										}
 									}
 								}
@@ -3009,10 +3072,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 								// Mark that we have new content to process
 								this.userMessageContentReady = false
-
-								// Present the tool call to user - presentAssistantMessage will execute
-								// tools sequentially and accumulate all results in userMessageContent
-								presentAssistantMessage(this)
+								this.pendingToolUses.push(toolUse)
 								break
 							}
 							case "text": {
@@ -3031,7 +3091,6 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 									})
 									this.userMessageContentReady = false
 								}
-								presentAssistantMessage(this)
 								break
 							}
 						}
@@ -3346,9 +3405,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 							// Mark that we have new content to process
 							this.userMessageContentReady = false
-
-							// Present the finalized tool call
-							presentAssistantMessage(this)
+							this.pendingToolUses.push(finalToolUse)
 						} else if (toolUseIndex !== undefined) {
 							// finalizeStreamingToolCall returned null (malformed JSON or missing args)
 							// We still need to mark the tool as non-partial so it gets executed
@@ -3365,9 +3422,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 							// Mark that we have new content to process
 							this.userMessageContentReady = false
-
-							// Present the tool call - validation will handle missing params
-							presentAssistantMessage(this)
+							if (existingToolUse) {
+								this.pendingToolUses.push({ ...existingToolUse })
+							}
 						}
 					}
 				}
@@ -3553,6 +3610,20 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					)
 					this.assistantMessageSavedToHistory = true
 
+					if (this.pendingToolUses.length > 0) {
+						this.loopPhase = "execute"
+						this.currentStreamingContentIndex = 0
+						try {
+							await presentAssistantMessage(this)
+						} finally {
+							this.pendingToolUses = []
+							this.currentStreamingContentIndex = 0
+							this.loopPhase = "decide"
+						}
+					} else {
+						this.userMessageContentReady = true
+					}
+
 					TelemetryService.instance.captureConversationMessage(this.taskId, "assistant")
 				}
 
@@ -3562,11 +3633,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				// NOTE: This MUST happen AFTER saving the assistant message to API history.
 				// When new_task is in the batch, it triggers delegation which calls flushPendingToolResultsToHistory().
 				// If the assistant message isn't saved yet, tool_results would appear before tool_use blocks.
-				if (partialBlocks.length > 0) {
-					// If there is content to update then it will complete and
-					// update `this.userMessageContentReady` to true, which we
-					// `pWaitFor` before making the next request.
-					presentAssistantMessage(this)
+				if (partialBlocks.length > 0 && this.pendingToolUses.length === 0) {
+					this.userMessageContentReady = true
 				}
 
 				if (hasTextContent || hasToolUses) {

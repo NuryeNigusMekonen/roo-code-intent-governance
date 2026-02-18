@@ -213,6 +213,20 @@ export class DiffViewProvider {
 			await updatedDocument.save()
 		}
 
+		// Append an agent trace for the diffview save
+		try {
+			const task = this.taskRef.deref()
+			await task?.hooks.emit({
+				type: "file_write",
+				mode: "diffview",
+				relPath: this.relPath,
+				bytes: Buffer.byteLength(editedContent, "utf-8"),
+				userEdited: editedContent !== this.newContent,
+			})
+		} catch (err) {
+			console.warn("Failed to emit hook for diffview save", err)
+		}
+
 		await vscode.window.showTextDocument(vscode.Uri.file(absolutePath), { preview: false, preserveFocus: true })
 		await this.closeAllDiffViews()
 
@@ -658,6 +672,19 @@ export class DiffViewProvider {
 		// Write the content directly to the file
 		await createDirectoriesForFile(absolutePath)
 		await fs.writeFile(absolutePath, content, "utf-8")
+
+		// Append an agent trace for the direct write
+		try {
+			const task = this.taskRef.deref()
+			await task?.hooks.emit({
+				type: "file_write",
+				mode: "direct",
+				relPath,
+				bytes: Buffer.byteLength(content, "utf-8"),
+			})
+		} catch (err) {
+			console.warn("Failed to emit hook for direct save", err)
+		}
 
 		// Open the document to ensure diagnostics are loaded
 		// When openFile is false (PREVENT_FOCUS_DISRUPTION enabled), we only open in memory

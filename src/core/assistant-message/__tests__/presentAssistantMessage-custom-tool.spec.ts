@@ -46,11 +46,13 @@ describe("presentAssistantMessage - Custom Tool Recording", () => {
 		mockTask = {
 			taskId: "test-task-id",
 			instanceId: "test-instance",
+			loopPhase: "execute",
 			abort: false,
 			presentAssistantMessageLocked: false,
 			presentAssistantMessageHasPendingUpdates: false,
 			currentStreamingContentIndex: 0,
 			assistantMessageContent: [],
+			pendingToolUses: [],
 			userMessageContent: [],
 			didCompleteReadingStream: false,
 			didRejectTool: false,
@@ -78,6 +80,9 @@ describe("presentAssistantMessage - Custom Tool Recording", () => {
 			},
 			say: vi.fn().mockResolvedValue(undefined),
 			ask: vi.fn().mockResolvedValue({ response: "yesButtonClicked" }),
+			hooks: {
+				emit: vi.fn().mockResolvedValue(undefined),
+			},
 		}
 
 		// Add pushToolResultToUserContent method after mockTask is created so it can reference mockTask
@@ -105,6 +110,7 @@ describe("presentAssistantMessage - Custom Tool Recording", () => {
 					partial: false,
 				},
 			]
+			mockTask.pendingToolUses = mockTask.assistantMessageContent
 
 			// Mock customToolRegistry to recognize this as a custom tool
 			vi.mocked(customToolRegistry.has).mockReturnValue(true)
@@ -134,6 +140,7 @@ describe("presentAssistantMessage - Custom Tool Recording", () => {
 					partial: false,
 				},
 			]
+			mockTask.pendingToolUses = mockTask.assistantMessageContent
 
 			// Mock customToolRegistry with a tool that throws an error
 			vi.mocked(customToolRegistry.has).mockReturnValue(true)
@@ -163,6 +170,7 @@ describe("presentAssistantMessage - Custom Tool Recording", () => {
 					partial: false,
 				},
 			]
+			mockTask.pendingToolUses = mockTask.assistantMessageContent
 
 			// read_file is not a custom tool
 			vi.mocked(customToolRegistry.has).mockReturnValue(false)
@@ -189,6 +197,7 @@ describe("presentAssistantMessage - Custom Tool Recording", () => {
 					partial: false,
 				},
 			]
+			mockTask.pendingToolUses = mockTask.assistantMessageContent
 
 			vi.mocked(customToolRegistry.has).mockReturnValue(false)
 
@@ -229,6 +238,7 @@ describe("presentAssistantMessage - Custom Tool Recording", () => {
 					partial: false,
 				},
 			]
+			mockTask.pendingToolUses = mockTask.assistantMessageContent
 
 			// Mock provider state with customTools experiment DISABLED
 			mockTask.providerRef = {
@@ -277,6 +287,7 @@ describe("presentAssistantMessage - Custom Tool Recording", () => {
 					partial: false,
 				},
 			]
+			mockTask.pendingToolUses = mockTask.assistantMessageContent
 
 			// Disable experiment
 			mockTask.providerRef = {
@@ -311,6 +322,7 @@ describe("presentAssistantMessage - Custom Tool Recording", () => {
 					partial: false,
 				},
 			]
+			mockTask.pendingToolUses = mockTask.assistantMessageContent
 
 			mockTask.providerRef = {
 				deref: () => ({
@@ -348,6 +360,7 @@ describe("presentAssistantMessage - Custom Tool Recording", () => {
 					partial: true, // Still streaming
 				},
 			]
+			mockTask.pendingToolUses = mockTask.assistantMessageContent
 
 			vi.mocked(customToolRegistry.has).mockReturnValue(true)
 

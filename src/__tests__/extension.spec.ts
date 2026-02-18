@@ -34,6 +34,10 @@ vi.mock("vscode", () => ({
 	commands: {
 		executeCommand: vi.fn(),
 	},
+	Uri: {
+		file: vi.fn((filePath: string) => ({ fsPath: filePath })),
+	},
+	RelativePattern: vi.fn(),
 	env: {
 		language: "en",
 	},
@@ -52,6 +56,7 @@ vi.mock("fs", () => ({
 }))
 
 const mockBridgeOrchestratorDisconnect = vi.fn().mockResolvedValue(undefined)
+const mockTelemetryRegister = vi.fn()
 
 const mockCloudServiceInstance = {
 	off: vi.fn(),
@@ -80,13 +85,13 @@ vi.mock("@roo-code/cloud", () => ({
 vi.mock("@roo-code/telemetry", () => ({
 	TelemetryService: {
 		createInstance: vi.fn().mockReturnValue({
-			register: vi.fn(),
+			register: mockTelemetryRegister,
 			setProvider: vi.fn(),
 			shutdown: vi.fn(),
 		}),
 		get instance() {
 			return {
-				register: vi.fn(),
+				register: mockTelemetryRegister,
 				setProvider: vi.fn(),
 				shutdown: vi.fn(),
 			}
@@ -224,6 +229,7 @@ vi.mock("../api/providers/fetchers/modelCache", () => ({
 
 describe("extension.ts", () => {
 	let mockContext: vscode.ExtensionContext
+	let originalNodeEnv: string | undefined
 	let authStateChangedHandler:
 		| ((data: { state: AuthState; previousState: AuthState }) => void | Promise<void>)
 		| undefined
@@ -231,6 +237,8 @@ describe("extension.ts", () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
 		mockBridgeOrchestratorDisconnect.mockClear()
+		mockTelemetryRegister.mockClear()
+		originalNodeEnv = process.env.NODE_ENV
 
 		mockContext = {
 			extensionPath: "/test/path",
@@ -242,6 +250,14 @@ describe("extension.ts", () => {
 		} as unknown as vscode.ExtensionContext
 
 		authStateChangedHandler = undefined
+	})
+
+	afterEach(() => {
+		if (originalNodeEnv === undefined) {
+			delete process.env.NODE_ENV
+		} else {
+			process.env.NODE_ENV = originalNodeEnv
+		}
 	})
 
 	test("does not call dotenvx.config when optional .env does not exist", async () => {
@@ -272,6 +288,36 @@ describe("extension.ts", () => {
 		await activate(mockContext)
 
 		expect(dotenvx.config).toHaveBeenCalledTimes(1)
+	})
+
+	test("registers PostHog telemetry client when NODE_ENV is not development", async () => {
+		vi.resetModules()
+		vi.clearAllMocks()
+		mockTelemetryRegister.mockClear()
+		process.env.NODE_ENV = "test"
+
+		const telemetry = await import("@roo-code/telemetry")
+
+		const { activate } = await import("../extension")
+		await activate(mockContext)
+
+		expect(telemetry.PostHogTelemetryClient).toHaveBeenCalledTimes(1)
+		expect(mockTelemetryRegister).toHaveBeenCalledTimes(1)
+	})
+
+	test("does not register PostHog telemetry client when NODE_ENV is development", async () => {
+		vi.resetModules()
+		vi.clearAllMocks()
+		mockTelemetryRegister.mockClear()
+		process.env.NODE_ENV = "development"
+
+		const telemetry = await import("@roo-code/telemetry")
+
+		const { activate } = await import("../extension")
+		await activate(mockContext)
+
+		expect(telemetry.PostHogTelemetryClient).not.toHaveBeenCalled()
+		expect(mockTelemetryRegister).not.toHaveBeenCalled()
 	})
 
 	test("authStateChangedHandler calls BridgeOrchestrator.disconnect when logged-out event fires", async () => {

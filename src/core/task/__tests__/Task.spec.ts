@@ -15,6 +15,7 @@ import { ApiStreamChunk } from "../../../api/transform/stream"
 import { ContextProxy } from "../../config/ContextProxy"
 import { processUserContentMentions } from "../../mentions/processUserContentMentions"
 import { MultiSearchReplaceDiffStrategy } from "../../diff/strategies/multi-search-replace"
+import { safeAppendJsonl } from "../../../utils/safeAppendJsonl"
 
 // Mock delay before any imports that might use it
 vi.mock("delay", () => ({
@@ -182,6 +183,10 @@ vi.mock("../../../utils/fs", () => ({
 	fileExistsAtPath: vi.fn().mockImplementation((filePath) => {
 		return filePath.includes("ui_messages.json") || filePath.includes("api_conversation_history.json")
 	}),
+}))
+
+vi.mock("../../../utils/safeAppendJsonl", () => ({
+	safeAppendJsonl: vi.fn().mockResolvedValue(undefined),
 }))
 
 const mockMessages = [
@@ -2186,5 +2191,94 @@ describe("pushToolResultToUserContent", () => {
 		expect(task.userMessageContent[0].type).toBe("text")
 		expect(task.userMessageContent[1].type).toBe("image")
 		expect(task.userMessageContent[2]).toEqual(toolResult)
+	})
+
+	it("should dedupe duplicate tool_start events by toolCallId", async () => {
+		const task = new Task({
+			provider: mockProvider,
+			apiConfiguration: mockApiConfig,
+			task: "test task",
+			startTask: false,
+		})
+
+		const mockSafeAppendJsonl = vi.mocked(safeAppendJsonl)
+		mockSafeAppendJsonl.mockClear()
+
+		await task.hooks.emit({ type: "tool_start", toolCallId: "call-1", toolName: "read_file" })
+		await task.hooks.emit({ type: "tool_start", toolCallId: "call-1", toolName: "read_file" })
+
+		expect(mockSafeAppendJsonl).toHaveBeenCalledTimes(1)
+		expect(mockSafeAppendJsonl).toHaveBeenLastCalledWith(
+			expect.any(String),
+			expect.objectContaining({ type: "tool_start", toolCallId: "call-1", toolName: "read_file" }),
+		)
+	})
+
+	it("should lock toolCallId after matching tool_end", async () => {
+		const task = new Task({
+			provider: mockProvider,
+			apiConfiguration: mockApiConfig,
+			task: "test task",
+			startTask: false,
+		})
+
+		const mockSafeAppendJsonl = vi.mocked(safeAppendJsonl)
+		mockSafeAppendJsonl.mockClear()
+
+		await task.hooks.emit({ type: "tool_start", toolCallId: "call-2", toolName: "read_file" })
+		await task.hooks.emit({ type: "tool_end", toolCallId: "call-2", toolName: "read_file" })
+		await task.hooks.emit({ type: "tool_start", toolCallId: "call-2", toolName: "read_file" })
+
+		expect(mockSafeAppendJsonl).toHaveBeenCalledTimes(2)
+		expect(mockSafeAppendJsonl).toHaveBeenNthCalledWith(
+			1,
+			expect.any(String),
+			expect.objectContaining({ type: "tool_start", toolCallId: "call-2" }),
+		)
+		expect(mockSafeAppendJsonl).toHaveBeenNthCalledWith(
+			2,
+			expect.any(String),
+			expect.objectContaining({ type: "tool_end", toolCallId: "call-2" }),
+		)
+	})
+
+	it("should dedupe duplicate tool_end events by toolCallId", async () => {
+		const task = new Task({
+			provider: mockProvider,
+			apiConfiguration: mockApiConfig,
+			task: "test task",
+			startTask: false,
+		})
+
+		const mockSafeAppendJsonl = vi.mocked(safeAppendJsonl)
+		mockSafeAppendJsonl.mockClear()
+
+		await task.hooks.emit({ type: "tool_end", toolCallId: "call-3", toolName: "read_file" })
+		await task.hooks.emit({ type: "tool_end", toolCallId: "call-3", toolName: "read_file" })
+
+		expect(mockSafeAppendJsonl).toHaveBeenCalledTimes(1)
+		expect(mockSafeAppendJsonl).toHaveBeenLastCalledWith(
+			expect.any(String),
+			expect.objectContaining({ type: "tool_end", toolCallId: "call-3", toolName: "read_file" }),
+		)
+	})
+
+	it("should not dedupe tool_start or tool_end without toolCallId", async () => {
+		const task = new Task({
+			provider: mockProvider,
+			apiConfiguration: mockApiConfig,
+			task: "test task",
+			startTask: false,
+		})
+
+		const mockSafeAppendJsonl = vi.mocked(safeAppendJsonl)
+		mockSafeAppendJsonl.mockClear()
+
+		await task.hooks.emit({ type: "tool_start", toolName: "read_file" })
+		await task.hooks.emit({ type: "tool_start", toolName: "read_file" })
+		await task.hooks.emit({ type: "tool_end", toolName: "read_file" })
+		await task.hooks.emit({ type: "tool_end", toolName: "read_file" })
+
+		expect(mockSafeAppendJsonl).toHaveBeenCalledTimes(4)
 	})
 })

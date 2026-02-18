@@ -86,6 +86,11 @@ async function generatePrompt(
 
 ${markdownFormattingSection()}
 
+MANDATORY INTENT HANDSHAKE:
+- Before any write/destructive action (write_to_file, apply_diff, edit, search_and_replace, search_replace, edit_file, apply_patch, execute_command, generate_image), you MUST first call select_active_intent.
+- The first tool call in a turn that performs work MUST be select_active_intent(intent_id).
+- If no active intent is selected, do not proceed with write/destructive tools.
+
 ${getSharedToolUseSection()}${toolsCatalog}
 
 	${getToolUseGuidelinesSection()}

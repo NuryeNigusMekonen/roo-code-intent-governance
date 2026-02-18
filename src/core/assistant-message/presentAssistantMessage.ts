@@ -34,6 +34,7 @@ import { updateTodoListTool } from "../tools/UpdateTodoListTool"
 import { runSlashCommandTool } from "../tools/RunSlashCommandTool"
 import { skillTool } from "../tools/SkillTool"
 import { generateImageTool } from "../tools/GenerateImageTool"
+import { selectActiveIntentTool } from "../tools/selectActiveIntentTool"
 import { applyDiffTool as applyDiffToolClass } from "../tools/ApplyDiffTool"
 import { isValidToolName, validateToolUse } from "../tools/validateToolUse"
 import { codebaseSearchTool } from "../tools/CodebaseSearchTool"
@@ -63,6 +64,10 @@ export async function presentAssistantMessage(cline: Task) {
 		throw new Error(`[Task#presentAssistantMessage] task ${cline.taskId}.${cline.instanceId} aborted`)
 	}
 
+	if (cline.loopPhase !== "execute") {
+		return
+	}
+
 	if (cline.presentAssistantMessageLocked) {
 		cline.presentAssistantMessageHasPendingUpdates = true
 		return
@@ -71,7 +76,7 @@ export async function presentAssistantMessage(cline: Task) {
 	cline.presentAssistantMessageLocked = true
 	cline.presentAssistantMessageHasPendingUpdates = false
 
-	if (cline.currentStreamingContentIndex >= cline.assistantMessageContent.length) {
+	if (cline.currentStreamingContentIndex >= cline.pendingToolUses.length) {
 		// This may happen if the last content block was completed before
 		// streaming could finish. If streaming is finished, and we're out of
 		// bounds then this means we already  presented/executed the last
@@ -90,12 +95,12 @@ export async function presentAssistantMessage(cline: Task) {
 		// The block is used read-only throughout this function - we never mutate its properties.
 		// We only need to protect against the reference changing during streaming, not nested mutations.
 		// This provides 80-90% reduction in cloning overhead (5-100ms saved per block).
-		block = { ...cline.assistantMessageContent[cline.currentStreamingContentIndex] }
+		block = { ...(cline.pendingToolUses[cline.currentStreamingContentIndex] as any) }
 	} catch (error) {
 		console.error(`ERROR cloning block:`, error)
 		console.error(
 			`Block content:`,
-			JSON.stringify(cline.assistantMessageContent[cline.currentStreamingContentIndex], null, 2),
+			JSON.stringify(cline.pendingToolUses[cline.currentStreamingContentIndex], null, 2),
 		)
 		cline.presentAssistantMessageLocked = false
 		return
@@ -133,7 +138,7 @@ export async function presentAssistantMessage(cline: Task) {
 			// Store approval feedback to merge into tool result (GitHub #10465)
 			let approvalFeedback: { text: string; images?: string[] } | undefined
 
-			const pushToolResult = (content: ToolResponse, feedbackImages?: string[]) => {
+			const pushToolResult = async (content: ToolResponse, ok: boolean = true, feedbackImages?: string[]) => {
 				if (hasToolResult) {
 					console.warn(
 						`[presentAssistantMessage] Skipping duplicate tool_result for mcp_tool_use: ${toolCallId}`,
@@ -167,6 +172,19 @@ export async function presentAssistantMessage(cline: Task) {
 				}
 
 				if (toolCallId) {
+					try {
+						await cline.hooks.emit({
+							type: "tool_end",
+							toolCallId: sanitizeToolUseId(toolCallId),
+							toolName: "use_mcp_tool",
+							ok,
+							mcpServer: resolvedServerName,
+							mcpTool: mcpBlock.toolName,
+						})
+					} catch (err) {
+						console.warn("Failed to emit hook for tool_end (mcp)", err)
+					}
+
 					cline.pushToolResultToUserContent({
 						type: "tool_result",
 						tool_use_id: sanitizeToolUseId(toolCallId),
@@ -200,9 +218,13 @@ export async function presentAssistantMessage(cline: Task) {
 				if (response !== "yesButtonClicked") {
 					if (text) {
 						await cline.say("user_feedback", text, images)
-						pushToolResult(formatResponse.toolResult(formatResponse.toolDeniedWithFeedback(text), images))
+						await pushToolResult(
+							formatResponse.toolResult(formatResponse.toolDeniedWithFeedback(text), images),
+							false,
+							images,
+						)
 					} else {
-						pushToolResult(formatResponse.toolDenied())
+						await pushToolResult(formatResponse.toolDenied(), false)
 					}
 					cline.didRejectTool = true
 					return false
@@ -230,7 +252,7 @@ export async function presentAssistantMessage(cline: Task) {
 					"error",
 					`Error ${action}:\n${error.message ?? JSON.stringify(serializeError(error), null, 2)}`,
 				)
-				pushToolResult(formatResponse.toolError(errorString))
+				await pushToolResult(formatResponse.toolError(errorString), false)
 			}
 
 			if (!mcpBlock.partial) {
@@ -267,6 +289,20 @@ export async function presentAssistantMessage(cline: Task) {
 					tool_name: mcpBlock.toolName,
 					arguments: mcpBlock.arguments,
 				},
+			}
+
+			if (toolCallId) {
+				try {
+					await cline.hooks.emit({
+						type: "tool_start",
+						toolCallId: sanitizeToolUseId(toolCallId),
+						toolName: "use_mcp_tool",
+						mcpServer: resolvedServerName,
+						mcpTool: mcpBlock.toolName,
+					})
+				} catch (err) {
+					console.warn("Failed to emit hook for tool_start (mcp)", err)
+				}
 			}
 
 			await useMcpToolTool.handle(cline, syntheticToolUse, {
@@ -326,6 +362,8 @@ export async function presentAssistantMessage(cline: Task) {
 
 			const toolDescription = (): string => {
 				switch (block.name) {
+					case "select_active_intent":
+						return `[${block.name} for '${block.params.intent_id}']`
 					case "execute_command":
 						return `[${block.name} for '${block.params.command}']`
 					case "read_file":
@@ -407,6 +445,25 @@ export async function presentAssistantMessage(cline: Task) {
 
 			// Track if we've already pushed a tool result for this tool call (native tool calling only)
 			let hasToolResult = false
+			let hasToolEndTrace = false
+
+			const appendToolEndTrace = async (ok: boolean) => {
+				if (hasToolEndTrace) {
+					return
+				}
+
+				try {
+					await cline.hooks.emit({
+						type: "tool_end",
+						toolCallId: sanitizeToolUseId(toolCallId),
+						toolName: block.name,
+						ok,
+					})
+					hasToolEndTrace = true
+				} catch (err) {
+					console.warn("Failed to emit hook for tool_end", err)
+				}
+			}
 
 			// If this is a native tool call but the parser couldn't construct nativeArgs
 			// (e.g., malformed/unfinished JSON in a streaming tool call), we must NOT attempt to
@@ -446,7 +503,7 @@ export async function presentAssistantMessage(cline: Task) {
 			// Store approval feedback to merge into tool result (GitHub #10465)
 			let approvalFeedback: { text: string; images?: string[] } | undefined
 
-			const pushToolResult = (content: ToolResponse) => {
+			const pushToolResult = async (content: ToolResponse, ok: boolean = true) => {
 				// Native tool calling: only allow ONE tool_result per tool call
 				if (hasToolResult) {
 					console.warn(
@@ -454,6 +511,7 @@ export async function presentAssistantMessage(cline: Task) {
 					)
 					return
 				}
+				hasToolResult = true
 
 				let resultContent: string
 				let imageBlocks: Anthropic.ImageBlockParam[] = []
@@ -478,6 +536,8 @@ export async function presentAssistantMessage(cline: Task) {
 					}
 				}
 
+				await appendToolEndTrace(ok)
+
 				cline.pushToolResultToUserContent({
 					type: "tool_result",
 					tool_use_id: sanitizeToolUseId(toolCallId),
@@ -487,8 +547,6 @@ export async function presentAssistantMessage(cline: Task) {
 				if (imageBlocks.length > 0) {
 					cline.userMessageContent.push(...imageBlocks)
 				}
-
-				hasToolResult = true
 			}
 
 			const askApproval = async (
@@ -509,9 +567,12 @@ export async function presentAssistantMessage(cline: Task) {
 					// Handle both messageResponse and noButtonClicked with text.
 					if (text) {
 						await cline.say("user_feedback", text, images)
-						pushToolResult(formatResponse.toolResult(formatResponse.toolDeniedWithFeedback(text), images))
+						await pushToolResult(
+							formatResponse.toolResult(formatResponse.toolDeniedWithFeedback(text), images),
+							false,
+						)
 					} else {
-						pushToolResult(formatResponse.toolDenied())
+						await pushToolResult(formatResponse.toolDenied(), false)
 					}
 					cline.didRejectTool = true
 					return false
@@ -550,7 +611,7 @@ export async function presentAssistantMessage(cline: Task) {
 					`Error ${action}:\n${error.message ?? JSON.stringify(serializeError(error), null, 2)}`,
 				)
 
-				pushToolResult(formatResponse.toolError(errorString))
+				await pushToolResult(formatResponse.toolError(errorString), false)
 			}
 
 			if (!block.partial) {
@@ -625,6 +686,59 @@ export async function presentAssistantMessage(cline: Task) {
 
 			// Check for identical consecutive tool calls.
 			if (!block.partial) {
+				const preToolUseEvent = {
+					type: "pre_tool_use" as const,
+					toolCallId: sanitizeToolUseId(toolCallId),
+					toolName: block.name,
+					toolParams: block.params,
+					activeIntentId: cline.activeIntentId,
+					blocked: false,
+					reason: undefined as string | undefined,
+					errorCode: undefined as "SCOPE_VIOLATION" | "HITL_REJECTED" | string | undefined,
+				}
+
+				try {
+					await cline.hooks.emit(preToolUseEvent)
+				} catch (err) {
+					console.warn("Failed to emit hook for pre_tool_use", err)
+				}
+
+				if (preToolUseEvent.blocked) {
+					const gatekeeperReason =
+						typeof preToolUseEvent.reason === "string" && preToolUseEvent.reason.length > 0
+							? preToolUseEvent.reason
+							: `Tool ${block.name} is blocked until an active intent is selected via select_active_intent.`
+
+					const gatekeeperCode =
+						preToolUseEvent.errorCode === "HITL_REJECTED" ? "HITL_REJECTED" : "SCOPE_VIOLATION"
+
+					const gatekeeperErrorPayload = JSON.stringify({
+						error: {
+							code: gatekeeperCode,
+							message: gatekeeperReason,
+							recoverable: true,
+						},
+					})
+
+					cline.consecutiveMistakeCount++
+					cline.recordToolError(block.name as ToolName, gatekeeperReason)
+					await cline.hooks.emit({
+						type: "gatekeeper_block",
+						toolCallId: sanitizeToolUseId(toolCallId),
+						toolName: block.name,
+						reason: gatekeeperReason,
+					})
+
+					cline.pushToolResultToUserContent({
+						type: "tool_result",
+						tool_use_id: sanitizeToolUseId(toolCallId),
+						content: gatekeeperErrorPayload,
+						is_error: true,
+					})
+
+					break
+				}
+
 				// Use the detector to check for repetition, passing the ToolUse
 				// block directly.
 				const repetitionCheck = cline.toolRepetitionDetector.check(block)
@@ -666,13 +780,24 @@ export async function presentAssistantMessage(cline: Task) {
 					)
 
 					// Return tool result message about the repetition
-					pushToolResult(
+					await pushToolResult(
 						formatResponse.toolError(
 							`Tool call repetition limit reached for ${block.name}. Please try a different approach.`,
 						),
+						false,
 					)
 					break
 				}
+			}
+
+			try {
+				await cline.hooks.emit({
+					type: "tool_start",
+					toolCallId: sanitizeToolUseId(toolCallId),
+					toolName: block.name,
+				})
+			} catch (err) {
+				console.warn("Failed to emit hook for tool_start", err)
 			}
 
 			switch (block.name) {
@@ -768,6 +893,13 @@ export async function presentAssistantMessage(cline: Task) {
 						pushToolResult,
 					})
 					break
+				case "select_active_intent":
+					await selectActiveIntentTool.handle(cline, block as ToolUse<"select_active_intent">, {
+						askApproval,
+						handleError,
+						pushToolResult,
+					})
+					break
 				case "read_command_output":
 					await readCommandOutputTool.handle(cline, block as ToolUse<"read_command_output">, {
 						askApproval,
@@ -820,11 +952,24 @@ export async function presentAssistantMessage(cline: Task) {
 						askFinishSubTaskApproval,
 						toolDescription,
 					}
-					await attemptCompletionTool.handle(
-						cline,
-						block as ToolUse<"attempt_completion">,
-						completionCallbacks,
-					)
+
+					let attemptCompletionOk = true
+					try {
+						await attemptCompletionTool.handle(
+							cline,
+							block as ToolUse<"attempt_completion">,
+							completionCallbacks,
+						)
+					} catch (error) {
+						attemptCompletionOk = false
+						throw error
+					} finally {
+						// attempt_completion may complete successfully without producing a tool_result.
+						// Ensure tool_end is always emitted exactly once for this call.
+						if (!hasToolResult) {
+							await appendToolEndTrace(attemptCompletionOk)
+						}
+					}
 					break
 				}
 				case "run_slash_command":
@@ -874,7 +1019,7 @@ export async function presentAssistantMessage(cline: Task) {
 									console.error(message)
 									cline.consecutiveMistakeCount++
 									await cline.say("error", message)
-									pushToolResult(formatResponse.toolError(message))
+									await pushToolResult(formatResponse.toolError(message), false)
 									break
 								}
 							}
@@ -888,7 +1033,7 @@ export async function presentAssistantMessage(cline: Task) {
 								`${customTool.name}.execute(): ${JSON.stringify(customToolArgs)} -> ${JSON.stringify(result)}`,
 							)
 
-							pushToolResult(result)
+							await pushToolResult(result)
 							cline.consecutiveMistakeCount = 0
 						} catch (executionError: any) {
 							cline.consecutiveMistakeCount++
@@ -939,7 +1084,7 @@ export async function presentAssistantMessage(cline: Task) {
 	// (instead of preemptively doing it in iterator).
 	if (!block.partial || cline.didRejectTool || cline.didAlreadyUseTool) {
 		// Block is finished streaming and executing.
-		if (cline.currentStreamingContentIndex === cline.assistantMessageContent.length - 1) {
+		if (cline.currentStreamingContentIndex === cline.pendingToolUses.length - 1) {
 			// It's okay that we increment if !didCompleteReadingStream, it'll
 			// just return because out of bounds and as streaming continues it
 			// will call `presentAssitantMessage` if a new block is ready. If
@@ -956,7 +1101,7 @@ export async function presentAssistantMessage(cline: Task) {
 		// again it will be streaming the next block.
 		cline.currentStreamingContentIndex++
 
-		if (cline.currentStreamingContentIndex < cline.assistantMessageContent.length) {
+		if (cline.currentStreamingContentIndex < cline.pendingToolUses.length) {
 			// There are already more content blocks to stream, so we'll call
 			// this function ourselves.
 			presentAssistantMessage(cline)

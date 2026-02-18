@@ -395,6 +395,14 @@ export class NativeToolCallParser {
 		let usedLegacyFormat = false
 
 		switch (name) {
+			case "select_active_intent":
+				if (partialArgs.intent_id !== undefined) {
+					nativeArgs = {
+						intent_id: partialArgs.intent_id,
+					}
+				}
+				break
+
 			case "read_file":
 				// Check for legacy format first: { files: [...] }
 				// Handle both array and stringified array (some models double-stringify)
@@ -697,7 +705,16 @@ export class NativeToolCallParser {
 
 		try {
 			// Parse the arguments JSON string
-			const args = toolCall.arguments === "" ? {} : JSON.parse(toolCall.arguments)
+			const rawArgs = toolCall.arguments === "" ? {} : JSON.parse(toolCall.arguments)
+
+			// Minimal compatibility mapping for select_active_intent.
+			// Some models/providers may emit camelCase intentId; map it to the schema key intent_id.
+			const args =
+				resolvedName === "select_active_intent" &&
+				rawArgs.intent_id === undefined &&
+				rawArgs.intentId !== undefined
+					? { ...rawArgs, intent_id: rawArgs.intentId }
+					: rawArgs
 
 			// Build stringified params for display/logging.
 			// Tool execution MUST use nativeArgs (typed) and does not support legacy fallbacks.
@@ -725,6 +742,14 @@ export class NativeToolCallParser {
 			let usedLegacyFormat = false
 
 			switch (resolvedName) {
+				case "select_active_intent":
+					if (args.intent_id !== undefined) {
+						nativeArgs = {
+							intent_id: args.intent_id,
+						} as NativeArgsFor<TName>
+					}
+					break
+
 				case "read_file":
 					// Check for legacy format first: { files: [...] }
 					// Handle both array and stringified array (some models double-stringify)

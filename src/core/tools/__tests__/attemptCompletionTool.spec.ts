@@ -190,6 +190,7 @@ describe("attemptCompletionTool", () => {
 			expect(mockTask.recordToolError).toHaveBeenCalledWith("attempt_completion")
 			expect(mockPushToolResult).toHaveBeenCalledWith(
 				expect.stringContaining("Cannot complete task while there are incomplete todos"),
+				false,
 			)
 		})
 
@@ -232,6 +233,7 @@ describe("attemptCompletionTool", () => {
 			expect(mockTask.recordToolError).toHaveBeenCalledWith("attempt_completion")
 			expect(mockPushToolResult).toHaveBeenCalledWith(
 				expect.stringContaining("Cannot complete task while there are incomplete todos"),
+				false,
 			)
 		})
 
@@ -275,6 +277,7 @@ describe("attemptCompletionTool", () => {
 			expect(mockTask.recordToolError).toHaveBeenCalledWith("attempt_completion")
 			expect(mockPushToolResult).toHaveBeenCalledWith(
 				expect.stringContaining("Cannot complete task while there are incomplete todos"),
+				false,
 			)
 		})
 
@@ -361,6 +364,7 @@ describe("attemptCompletionTool", () => {
 			expect(mockTask.recordToolError).toHaveBeenCalledWith("attempt_completion")
 			expect(mockPushToolResult).toHaveBeenCalledWith(
 				expect.stringContaining("Cannot complete task while there are incomplete todos"),
+				false,
 			)
 		})
 
@@ -439,6 +443,7 @@ describe("attemptCompletionTool", () => {
 				)
 				expect(mockPushToolResult).toHaveBeenCalledWith(
 					expect.stringContaining("errors.attempt_completion_tool_failed"),
+					false,
 				)
 			})
 
