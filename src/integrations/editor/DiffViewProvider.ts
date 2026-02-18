@@ -216,7 +216,7 @@ export class DiffViewProvider {
 		// Append an agent trace for the diffview save
 		try {
 			const task = this.taskRef.deref()
-			await task?.appendAgentTrace?.({
+			await task?.hooks.emit({
 				type: "file_write",
 				mode: "diffview",
 				relPath: this.relPath,
@@ -224,7 +224,7 @@ export class DiffViewProvider {
 				userEdited: editedContent !== this.newContent,
 			})
 		} catch (err) {
-			console.warn("Failed to append agent trace for diffview save", err)
+			console.warn("Failed to emit hook for diffview save", err)
 		}
 
 		await vscode.window.showTextDocument(vscode.Uri.file(absolutePath), { preview: false, preserveFocus: true })
@@ -676,14 +676,14 @@ export class DiffViewProvider {
 		// Append an agent trace for the direct write
 		try {
 			const task = this.taskRef.deref()
-			await task?.appendAgentTrace?.({
+			await task?.hooks.emit({
 				type: "file_write",
 				mode: "direct",
 				relPath,
 				bytes: Buffer.byteLength(content, "utf-8"),
 			})
 		} catch (err) {
-			console.warn("Failed to append agent trace for direct save", err)
+			console.warn("Failed to emit hook for direct save", err)
 		}
 
 		// Open the document to ensure diagnostics are loaded

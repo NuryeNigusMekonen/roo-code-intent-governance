@@ -32,11 +32,13 @@ describe("presentAssistantMessage - Image Handling in Native Tool Calling", () =
 		mockTask = {
 			taskId: "test-task-id",
 			instanceId: "test-instance",
+			loopPhase: "execute",
 			abort: false,
 			presentAssistantMessageLocked: false,
 			presentAssistantMessageHasPendingUpdates: false,
 			currentStreamingContentIndex: 0,
 			assistantMessageContent: [],
+			pendingToolUses: [],
 			userMessageContent: [],
 			didCompleteReadingStream: false,
 			didRejectTool: false,
@@ -59,6 +61,9 @@ describe("presentAssistantMessage - Image Handling in Native Tool Calling", () =
 			},
 			say: vi.fn().mockResolvedValue(undefined),
 			ask: vi.fn().mockResolvedValue({ response: "yesButtonClicked" }),
+			hooks: {
+				emit: vi.fn().mockResolvedValue(undefined),
+			},
 		}
 
 		// Add pushToolResultToUserContent method after mockTask is created so it can reference mockTask
@@ -86,6 +91,7 @@ describe("presentAssistantMessage - Image Handling in Native Tool Calling", () =
 				nativeArgs: { question: "What do you see?", follow_up: [] },
 			},
 		]
+		mockTask.pendingToolUses = mockTask.assistantMessageContent
 
 		// Create a mock askApproval that includes images in the response
 		const imageBlock: Anthropic.ImageBlockParam = {
@@ -139,6 +145,7 @@ describe("presentAssistantMessage - Image Handling in Native Tool Calling", () =
 				nativeArgs: { question: "What is your name?", follow_up: [] },
 			},
 		]
+		mockTask.pendingToolUses = mockTask.assistantMessageContent
 
 		// Response with text but NO images
 		mockTask.ask = vi.fn().mockResolvedValue({
@@ -168,6 +175,7 @@ describe("presentAssistantMessage - Image Handling in Native Tool Calling", () =
 				params: { question: "What do you see?" },
 			},
 		]
+		mockTask.pendingToolUses = mockTask.assistantMessageContent
 
 		mockTask.ask = vi.fn().mockResolvedValue({
 			response: "yesButtonClicked",
@@ -196,6 +204,7 @@ describe("presentAssistantMessage - Image Handling in Native Tool Calling", () =
 				params: { result: "Task completed" },
 			},
 		]
+		mockTask.pendingToolUses = mockTask.assistantMessageContent
 
 		// Empty response
 		mockTask.ask = vi.fn().mockResolvedValue({
@@ -235,6 +244,7 @@ describe("presentAssistantMessage - Image Handling in Native Tool Calling", () =
 					params: { path: "output.txt", content: "test" },
 				},
 			]
+			mockTask.pendingToolUses = mockTask.assistantMessageContent
 
 			// First tool is rejected
 			mockTask.didRejectTool = true
@@ -274,6 +284,7 @@ describe("presentAssistantMessage - Image Handling in Native Tool Calling", () =
 					params: { path: "output.txt", content: "test" },
 				},
 			]
+			mockTask.pendingToolUses = mockTask.assistantMessageContent
 
 			// First tool is rejected
 			mockTask.didRejectTool = true
@@ -302,6 +313,7 @@ describe("presentAssistantMessage - Image Handling in Native Tool Calling", () =
 					partial: true, // Partial tool block
 				},
 			]
+			mockTask.pendingToolUses = mockTask.assistantMessageContent
 
 			mockTask.didRejectTool = true
 

@@ -2756,8 +2756,16 @@ export class ClineProvider
 			return
 		}
 
+		const bridgeUrl = process.env.NODE_ENV === "development" ? "" : config.socketBridgeUrl
+
+		if (!bridgeUrl) {
+			this.log("[ClineProvider#remoteControlEnabled] Bridge URL is empty, skipping bridge connection")
+			return
+		}
+
 		await BridgeOrchestrator.connectOrDisconnect(userInfo, enabled, {
 			...config,
+			socketBridgeUrl: bridgeUrl,
 			provider: this,
 			sessionId: vscode.env.sessionId,
 			isCloudAgent: CloudService.instance.isCloudAgent,

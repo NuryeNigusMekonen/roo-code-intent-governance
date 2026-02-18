@@ -137,10 +137,12 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Initialize telemetry service.
 	const telemetryService = TelemetryService.createInstance()
 
-	try {
-		telemetryService.register(new PostHogTelemetryClient())
-	} catch (error) {
-		console.warn("Failed to register PostHogTelemetryClient:", error)
+	if (process.env.NODE_ENV !== "development") {
+		try {
+			telemetryService.register(new PostHogTelemetryClient())
+		} catch (error) {
+			console.warn("Failed to register PostHogTelemetryClient:", error)
+		}
 	}
 
 	// Create logger for cloud services.

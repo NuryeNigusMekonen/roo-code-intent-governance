@@ -45,7 +45,7 @@ export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
 			const errorMsg = t("common:errors.attempt_completion_tool_failed")
 
 			await task.say("error", errorMsg)
-			pushToolResult(formatResponse.toolError(errorMsg))
+			pushToolResult(formatResponse.toolError(errorMsg), false)
 			return
 		}
 
@@ -63,6 +63,7 @@ export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
 				formatResponse.toolError(
 					"Cannot complete task while there are incomplete todos. Please finish all todos before attempting completion.",
 				),
+				false,
 			)
 
 			return
@@ -72,7 +73,7 @@ export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
 			if (!result) {
 				task.consecutiveMistakeCount++
 				task.recordToolError("attempt_completion")
-				pushToolResult(await task.sayAndCreateMissingParamError("attempt_completion", "result"))
+				pushToolResult(await task.sayAndCreateMissingParamError("attempt_completion", "result"), false)
 				return
 			}
 
@@ -144,7 +145,7 @@ export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
 			await task.say("user_feedback", text ?? "", images)
 
 			const feedbackText = `<user_message>\n${text}\n</user_message>`
-			pushToolResult(formatResponse.toolResult(feedbackText, images))
+			pushToolResult(formatResponse.toolResult(feedbackText, images), false)
 		} catch (error) {
 			await handleError("inspecting site", error as Error)
 		}
@@ -159,12 +160,12 @@ export class AttemptCompletionTool extends BaseTool<"attempt_completion"> {
 		result: string,
 		provider: DelegationProvider,
 		askFinishSubTaskApproval: () => Promise<boolean>,
-		pushToolResult: (result: string) => void,
+		pushToolResult: (result: string, ok?: boolean) => void,
 	): Promise<boolean> {
 		const didApprove = await askFinishSubTaskApproval()
 
 		if (!didApprove) {
-			pushToolResult(formatResponse.toolDenied())
+			pushToolResult(formatResponse.toolDenied(), false)
 			return true
 		}
 

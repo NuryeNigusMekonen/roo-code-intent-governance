@@ -7,6 +7,48 @@ describe("NativeToolCallParser", () => {
 	})
 
 	describe("parseToolCall", () => {
+		describe("select_active_intent tool", () => {
+			it("should parse intent_id for select_active_intent", () => {
+				const toolCall = {
+					id: "toolu_intent_123",
+					name: "select_active_intent" as const,
+					arguments: JSON.stringify({
+						intent_id: "INT-001",
+					}),
+				}
+
+				const result = NativeToolCallParser.parseToolCall(toolCall)
+
+				expect(result).not.toBeNull()
+				expect(result?.type).toBe("tool_use")
+				if (result?.type === "tool_use") {
+					expect(result.nativeArgs).toBeDefined()
+					const nativeArgs = result.nativeArgs as { intent_id: string }
+					expect(nativeArgs.intent_id).toBe("INT-001")
+				}
+			})
+
+			it("should map intentId to params.intent_id and nativeArgs.intent_id for select_active_intent", () => {
+				const toolCall = {
+					id: "toolu_intent_124",
+					name: "select_active_intent" as const,
+					arguments: JSON.stringify({
+						intentId: "INT-002",
+					}),
+				}
+
+				const result = NativeToolCallParser.parseToolCall(toolCall)
+
+				expect(result).not.toBeNull()
+				expect(result?.type).toBe("tool_use")
+				if (result?.type === "tool_use") {
+					expect(result.params.intent_id).toBe("INT-002")
+					const nativeArgs = result.nativeArgs as { intent_id: string }
+					expect(nativeArgs.intent_id).toBe("INT-002")
+				}
+			})
+		})
+
 		describe("read_file tool", () => {
 			it("should parse minimal single-file read_file args", () => {
 				const toolCall = {
@@ -294,6 +336,21 @@ describe("NativeToolCallParser", () => {
 	})
 
 	describe("processStreamingChunk", () => {
+		describe("select_active_intent tool", () => {
+			it("should emit a partial ToolUse with nativeArgs.intent_id during streaming", () => {
+				const id = "toolu_streaming_intent"
+				NativeToolCallParser.startStreamingToolCall(id, "select_active_intent")
+
+				const fullArgs = JSON.stringify({ intent_id: "INT-002" })
+				const result = NativeToolCallParser.processStreamingChunk(id, fullArgs)
+
+				expect(result).not.toBeNull()
+				expect(result?.nativeArgs).toBeDefined()
+				const nativeArgs = result?.nativeArgs as { intent_id: string }
+				expect(nativeArgs.intent_id).toBe("INT-002")
+			})
+		})
+
 		describe("read_file tool", () => {
 			it("should emit a partial ToolUse with nativeArgs.path during streaming", () => {
 				const id = "toolu_streaming_123"

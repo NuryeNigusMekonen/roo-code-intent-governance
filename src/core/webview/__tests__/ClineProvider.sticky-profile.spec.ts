@@ -56,6 +56,28 @@ vi.mock("vscode", () => ({
 // Create a counter for unique task IDs.
 let taskIdCounter = 0
 
+const cloudBridgeMocks = vi.hoisted(() => ({
+	connectOrDisconnect: vi.fn().mockResolvedValue(undefined),
+	disconnect: vi.fn().mockResolvedValue(undefined),
+	getInstance: vi.fn().mockReturnValue(null),
+	cloudServiceInstance: {
+		isAuthenticated: vi.fn().mockReturnValue(false),
+		getUserInfo: vi.fn().mockReturnValue({ extensionBridgeEnabled: true }),
+		cloudAPI: {
+			bridgeConfig: vi.fn().mockResolvedValue({
+				userId: "test-user-id",
+				socketBridgeUrl: "https://extension-bridge.fly.dev",
+				token: "test-token",
+			}),
+		},
+		isCloudAgent: false,
+	},
+}))
+
+const mockBridgeConnectOrDisconnect = cloudBridgeMocks.connectOrDisconnect
+const mockBridgeDisconnect = cloudBridgeMocks.disconnect
+const mockBridgeGetInstance = cloudBridgeMocks.getInstance
+
 vi.mock("../../task/Task", () => ({
 	Task: vi.fn().mockImplementation((options) => ({
 		taskId: options.taskId || `test-task-id-${++taskIdCounter}`,
@@ -109,13 +131,14 @@ vi.mock("@roo-code/cloud", () => ({
 	CloudService: {
 		hasInstance: vi.fn().mockReturnValue(true),
 		get instance() {
-			return {
-				isAuthenticated: vi.fn().mockReturnValue(false),
-			}
+			return cloudBridgeMocks.cloudServiceInstance
 		},
 	},
 	BridgeOrchestrator: {
 		isEnabled: vi.fn().mockReturnValue(false),
+		connectOrDisconnect: cloudBridgeMocks.connectOrDisconnect,
+		disconnect: cloudBridgeMocks.disconnect,
+		getInstance: cloudBridgeMocks.getInstance,
 	},
 	getRooCodeApiUrl: vi.fn().mockReturnValue("https://app.roocode.com"),
 }))
@@ -191,10 +214,28 @@ describe("ClineProvider - Sticky Provider Profile", () => {
 	let mockOutputChannel: vscode.OutputChannel
 	let mockWebviewView: vscode.WebviewView
 	let mockPostMessage: any
+	let originalNodeEnv: string | undefined
 
 	beforeEach(() => {
 		vi.clearAllMocks()
 		taskIdCounter = 0
+		originalNodeEnv = process.env.NODE_ENV
+		mockBridgeConnectOrDisconnect.mockClear()
+		mockBridgeDisconnect.mockClear()
+		mockBridgeGetInstance.mockReturnValue(null)
+
+		Object.assign(cloudBridgeMocks.cloudServiceInstance, {
+			isAuthenticated: vi.fn().mockReturnValue(false),
+			getUserInfo: vi.fn().mockReturnValue({ extensionBridgeEnabled: true }),
+			cloudAPI: {
+				bridgeConfig: vi.fn().mockResolvedValue({
+					userId: "test-user-id",
+					socketBridgeUrl: "https://extension-bridge.fly.dev",
+					token: "test-token",
+				}),
+			},
+			isCloudAgent: false,
+		})
 
 		if (!TelemetryService.hasInstance()) {
 			TelemetryService.createInstance([])
@@ -278,6 +319,14 @@ describe("ClineProvider - Sticky Provider Profile", () => {
 			readResource: vi.fn().mockResolvedValue({ contents: [] }),
 			getAllServers: vi.fn().mockReturnValue([]),
 		})
+	})
+
+	afterEach(() => {
+		if (originalNodeEnv === undefined) {
+			delete process.env.NODE_ENV
+		} else {
+			process.env.NODE_ENV = originalNodeEnv
+		}
 	})
 
 	describe("activateProviderProfile", () => {
@@ -843,6 +892,36 @@ describe("ClineProvider - Sticky Provider Profile", () => {
 
 			// Verify activateProviderProfile was not called with null
 			expect(activateProviderProfileSpy).not.toHaveBeenCalledWith({ name: null })
+		})
+	})
+
+	describe("remoteControlEnabled bridge URL behavior", () => {
+		it("should skip bridge connect when NODE_ENV is development", async () => {
+			process.env.NODE_ENV = "development"
+
+			await provider.remoteControlEnabled(true)
+
+			expect(mockBridgeConnectOrDisconnect).not.toHaveBeenCalled()
+			expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
+				"[ClineProvider#remoteControlEnabled] Bridge URL is empty, skipping bridge connection",
+			)
+		})
+
+		it("should connect bridge with socketBridgeUrl when NODE_ENV is not development", async () => {
+			process.env.NODE_ENV = "test"
+
+			await provider.remoteControlEnabled(true)
+
+			expect(mockBridgeConnectOrDisconnect).toHaveBeenCalledWith(
+				expect.objectContaining({ extensionBridgeEnabled: true }),
+				true,
+				expect.objectContaining({
+					socketBridgeUrl: "https://extension-bridge.fly.dev",
+					userId: "test-user-id",
+					token: "test-token",
+					provider,
+				}),
+			)
 		})
 	})
 

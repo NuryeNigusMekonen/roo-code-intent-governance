@@ -23,6 +23,7 @@ export type ToolGroup = z.infer<typeof toolGroupsSchema>
 
 export const toolNames = [
 	"execute_command",
+	"select_active_intent",
 	"read_file",
 	"read_command_output",
 	"write_to_file",

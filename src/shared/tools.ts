@@ -13,7 +13,7 @@ export type AskApproval = (
 
 export type HandleError = (action: string, error: Error) => Promise<void>
 
-export type PushToolResult = (content: ToolResponse) => void
+export type PushToolResult = (content: ToolResponse, ok?: boolean) => void
 
 export type AskFinishSubTaskApproval = () => Promise<boolean>
 
@@ -25,6 +25,7 @@ export interface TextContent {
 
 export const toolParamNames = [
 	"command",
+	"intent_id",
 	"path",
 	"content",
 	"regex",
@@ -90,6 +91,7 @@ export type ToolParamName = (typeof toolParamNames)[number]
  */
 export type NativeToolArgs = {
 	access_mcp_resource: { server_name: string; uri: string }
+	select_active_intent: { intent_id: string }
 	read_file: import("@roo-code/types").ReadFileToolParams
 	read_command_output: { artifact_id: string; search?: string; offset?: number; limit?: number }
 	attempt_completion: { result: string }
@@ -169,6 +171,11 @@ export interface ExecuteCommandToolUse extends ToolUse<"execute_command"> {
 	name: "execute_command"
 	// Pick<Record<ToolParamName, string>, "command"> makes "command" required, but Partial<> makes it optional
 	params: Partial<Pick<Record<ToolParamName, string>, "command" | "cwd">>
+}
+
+export interface SelectActiveIntentToolUse extends ToolUse<"select_active_intent"> {
+	name: "select_active_intent"
+	params: Partial<Pick<Record<ToolParamName, string>, "intent_id">>
 }
 
 export interface ReadFileToolUse extends ToolUse<"read_file"> {
@@ -266,6 +273,7 @@ export type ToolGroupConfig = {
 
 export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
 	execute_command: "run commands",
+	select_active_intent: "select active intent",
 	read_file: "read files",
 	read_command_output: "read command output",
 	write_to_file: "write files",
@@ -314,6 +322,7 @@ export const TOOL_GROUPS: Record<ToolGroup, ToolGroupConfig> = {
 
 // Tools that are always available to all modes.
 export const ALWAYS_AVAILABLE_TOOLS: ToolName[] = [
+	"select_active_intent",
 	"ask_followup_question",
 	"attempt_completion",
 	"switch_mode",
