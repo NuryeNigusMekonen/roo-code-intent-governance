@@ -1,7 +1,11 @@
 import { HookEngine, HookEvent } from "./HookEngine"
+import * as fs from "fs/promises"
+import * as path from "path"
 import type { Task } from "../task/Task"
 import { createOwnedScopeEnforcer } from "./scopeEnforcer"
 import { createDestructiveCommandApprovalHook } from "./commandApproval"
+import { appendAgentTraceRecord } from "../trace/agentTraceLedger"
+import type { MutationClass } from "../trace/agentTraceLedger"
 
 const SAFE_READ_PATTERNS: RegExp[] = [
 	/^\s*pwd\b/i,
@@ -40,15 +44,65 @@ function isDestructiveCommand(command: string): boolean {
 }
 
 function isWriteLikeTool(toolName: string): boolean {
-	return [
-		"write_to_file",
-		"apply_diff",
-		"edit_file",
-		"apply_patch",
-		"search_and_replace",
-		"search_replace",
-		"generate_image",
-	].includes(toolName)
+	return ["write_to_file", "apply_diff", "edit_file", "apply_patch", "search_and_replace", "search_replace"].includes(
+		toolName,
+	)
+}
+
+type WriteParams = {
+	path?: unknown
+	filePath?: unknown
+	file_path?: unknown
+	intent_id?: unknown
+	mutation_class?: unknown
+	content?: unknown
+	newContent?: unknown
+}
+
+const VALID_MUTATION_CLASSES: ReadonlySet<string> = new Set(["AST_REFACTOR", "INTENT_EVOLUTION"])
+
+function extractWritePath(toolParams: unknown): string | null {
+	if (!toolParams || typeof toolParams !== "object") {
+		return null
+	}
+
+	const params = toolParams as WriteParams
+	if (typeof params.path === "string" && params.path.length > 0) {
+		return params.path
+	}
+	if (typeof params.filePath === "string" && params.filePath.length > 0) {
+		return params.filePath
+	}
+	if (typeof params.file_path === "string" && params.file_path.length > 0) {
+		return params.file_path
+	}
+	return null
+}
+
+function extractIntentId(toolParams: unknown): string | null {
+	if (!toolParams || typeof toolParams !== "object") {
+		return null
+	}
+
+	const intentId = (toolParams as WriteParams).intent_id
+	return typeof intentId === "string" && intentId.length > 0 ? intentId : null
+}
+
+function extractMutationClass(toolParams: unknown): MutationClass | null {
+	if (!toolParams || typeof toolParams !== "object") {
+		return null
+	}
+
+	const value = (toolParams as WriteParams).mutation_class
+	if (typeof value === "string" && VALID_MUTATION_CLASSES.has(value)) {
+		return value as MutationClass
+	}
+
+	return null
+}
+
+function getDeterministicValidationError(toolName: string): string {
+	return `Write-like tool '${toolName}' requires active intent handshake and valid params: intent_id must equal active intent, mutation_class must be AST_REFACTOR or INTENT_EVOLUTION.`
 }
 
 export function registerDefaultHooks(engine: HookEngine, task: Task) {
@@ -75,7 +129,24 @@ export function registerDefaultHooks(engine: HookEngine, task: Task) {
 
 		if (!task.activeIntentId) {
 			e.blocked = true
-			e.reason = `Intent handshake required before using ${e.toolName}. Call select_active_intent(intent_id) first.`
+			e.reason = getDeterministicValidationError(e.toolName)
+			e.errorCode = "SCOPE_VIOLATION"
+			return
+		}
+
+		const intentId = extractIntentId(e.toolParams)
+		if (!intentId || intentId !== task.activeIntentId) {
+			e.blocked = true
+			e.reason = getDeterministicValidationError(e.toolName)
+			e.errorCode = "SCOPE_VIOLATION"
+			return
+		}
+
+		const mutationClass = extractMutationClass(e.toolParams)
+		if (!mutationClass) {
+			e.blocked = true
+			e.reason = getDeterministicValidationError(e.toolName)
+			e.errorCode = "SCOPE_VIOLATION"
 		}
 	})
 
@@ -88,6 +159,58 @@ export function registerDefaultHooks(engine: HookEngine, task: Task) {
 			await task?.appendAgentTrace?.(e)
 		} catch (err) {
 			console.warn("appendAgentTrace failed", err)
+		}
+	})
+
+	engine.register("agent-trace-ledger", 11, async (e: HookEvent) => {
+		if (e.type !== "tool_end" || e.ok !== true) {
+			return
+		}
+
+		if (!isWriteLikeTool(e.toolName)) {
+			return
+		}
+
+		const relPath = extractWritePath(e.toolParams)
+		const intentId = extractIntentId(e.toolParams) ?? task.activeIntentId
+		const mutationClass = extractMutationClass(e.toolParams) ?? "AST_REFACTOR"
+
+		if (!relPath || !intentId) {
+			return
+		}
+
+		let content: string | null = null
+		if (e.toolParams && typeof e.toolParams === "object") {
+			const params = e.toolParams as WriteParams
+			if (typeof params.newContent === "string") {
+				content = params.newContent
+			} else if (typeof params.content === "string") {
+				content = params.content
+			}
+		}
+
+		if (content === null) {
+			try {
+				content = await fs.readFile(path.resolve(task.cwd, relPath), "utf-8")
+			} catch {
+				return
+			}
+		}
+
+		try {
+			await appendAgentTraceRecord({
+				cwd: task.cwd,
+				intent_id: intentId,
+				mutation_class: mutationClass,
+				files: [
+					{
+						relative_path: relPath,
+						content,
+					},
+				],
+			})
+		} catch (err) {
+			console.warn("appendAgentTraceRecord failed", err)
 		}
 	})
 }
