@@ -241,7 +241,12 @@ describe("presentAssistantMessage - Image Handling in Native Tool Calling", () =
 					type: "tool_use",
 					id: toolCallId2,
 					name: "write_to_file",
-					params: { path: "output.txt", content: "test" },
+					params: {
+						path: "output.txt",
+						content: "test",
+						intent_id: "INT-003",
+						mutation_class: "AST_REFACTOR",
+					},
 				},
 			]
 			mockTask.pendingToolUses = mockTask.assistantMessageContent
@@ -281,7 +286,12 @@ describe("presentAssistantMessage - Image Handling in Native Tool Calling", () =
 				{
 					type: "tool_use",
 					name: "write_to_file",
-					params: { path: "output.txt", content: "test" },
+					params: {
+						path: "output.txt",
+						content: "test",
+						intent_id: "INT-003",
+						mutation_class: "AST_REFACTOR",
+					},
 				},
 			]
 			mockTask.pendingToolUses = mockTask.assistantMessageContent
@@ -309,7 +319,12 @@ describe("presentAssistantMessage - Image Handling in Native Tool Calling", () =
 					type: "tool_use",
 					id: toolCallId,
 					name: "write_to_file",
-					params: { path: "output.txt", content: "test" },
+					params: {
+						path: "output.txt",
+						content: "test",
+						intent_id: "INT-003",
+						mutation_class: "AST_REFACTOR",
+					},
 					partial: true, // Partial tool block
 				},
 			]

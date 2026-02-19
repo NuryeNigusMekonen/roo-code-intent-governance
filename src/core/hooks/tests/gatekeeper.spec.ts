@@ -41,6 +41,11 @@ describe("intent gatekeeper hook", () => {
 		const event: any = {
 			type: "pre_tool_use",
 			toolName: "write_to_file",
+			toolParams: {
+				path: "src/file.ts",
+				intent_id: "INT-001",
+				mutation_class: "AST_REFACTOR",
+			},
 			blocked: false,
 		}
 
@@ -144,6 +149,8 @@ describe("intent gatekeeper hook", () => {
 			toolName: "write_to_file",
 			toolParams: {
 				path: "src/outside/file.ts",
+				intent_id: "INT-001",
+				mutation_class: "AST_REFACTOR",
 			},
 			blocked: false,
 		}
@@ -177,6 +184,8 @@ describe("intent gatekeeper hook", () => {
 			toolName: "write_to_file",
 			toolParams: {
 				path: "src/ok/file.ts",
+				intent_id: "INT-001",
+				mutation_class: "AST_REFACTOR",
 			},
 			blocked: false,
 		}
@@ -208,6 +217,8 @@ describe("intent gatekeeper hook", () => {
 			toolName: "write_to_file",
 			toolParams: {
 				path: "src/blocked/file.ts",
+				intent_id: "INT-001",
+				mutation_class: "AST_REFACTOR",
 			},
 			blocked: false,
 		}
@@ -287,5 +298,141 @@ describe("intent gatekeeper hook", () => {
 
 		expect(event.blocked).toBe(false)
 		expect(event.reason).toBeUndefined()
+	})
+
+	it("blocks write_to_file when intent_id is missing", async () => {
+		const engine = new HookEngine()
+		const task: any = {
+			activeIntentId: "INT-001",
+			activeIntent: {
+				title: "Intent",
+				description: "Desc",
+				owned_scope: ["src/**"],
+				constraints: [],
+			},
+			appendAgentTrace: vi.fn(),
+		}
+
+		registerDefaultHooks(engine, task)
+
+		const event: any = {
+			type: "pre_tool_use",
+			toolName: "write_to_file",
+			toolParams: {
+				path: "src/ok/file.ts",
+				mutation_class: "AST_REFACTOR",
+			},
+			blocked: false,
+		}
+
+		await engine.emit(event)
+
+		expect(event.blocked).toBe(true)
+		expect(event.reason).toContain("requires active intent handshake and valid params")
+		expect(event.errorCode).toBe("SCOPE_VIOLATION")
+	})
+
+	it("blocks write_to_file when intent_id does not match active intent", async () => {
+		const engine = new HookEngine()
+		const task: any = {
+			activeIntentId: "INT-001",
+			activeIntent: {
+				title: "Intent",
+				description: "Desc",
+				owned_scope: ["src/**"],
+				constraints: [],
+			},
+			appendAgentTrace: vi.fn(),
+		}
+
+		registerDefaultHooks(engine, task)
+
+		const event: any = {
+			type: "pre_tool_use",
+			toolName: "write_to_file",
+			toolParams: {
+				path: "src/ok/file.ts",
+				intent_id: "INT-999",
+				mutation_class: "AST_REFACTOR",
+			},
+			blocked: false,
+		}
+
+		await engine.emit(event)
+
+		expect(event.blocked).toBe(true)
+		expect(event.reason).toContain("requires active intent handshake and valid params")
+		expect(event.errorCode).toBe("SCOPE_VIOLATION")
+	})
+
+	it("blocks write_to_file when mutation_class is invalid", async () => {
+		const engine = new HookEngine()
+		const task: any = {
+			activeIntentId: "INT-001",
+			activeIntent: {
+				title: "Intent",
+				description: "Desc",
+				owned_scope: ["src/**"],
+				constraints: [],
+			},
+			appendAgentTrace: vi.fn(),
+		}
+
+		registerDefaultHooks(engine, task)
+
+		const event: any = {
+			type: "pre_tool_use",
+			toolName: "write_to_file",
+			toolParams: {
+				path: "src/ok/file.ts",
+				intent_id: "INT-001",
+				mutation_class: "INVALID",
+			},
+			blocked: false,
+		}
+
+		await engine.emit(event)
+
+		expect(event.blocked).toBe(true)
+		expect(event.reason).toContain("requires active intent handshake and valid params")
+		expect(event.errorCode).toBe("SCOPE_VIOLATION")
+	})
+
+	it("appends ledger record after successful write_to_file tool_end", async () => {
+		const engine = new HookEngine()
+		const task: any = {
+			cwd: tempDir,
+			activeIntentId: "INT-003",
+			activeIntent: {
+				title: "Intent",
+				description: "Desc",
+				owned_scope: ["src/**"],
+				constraints: [],
+			},
+			appendAgentTrace: vi.fn(),
+		}
+
+		registerDefaultHooks(engine, task)
+
+		await engine.emit({
+			type: "tool_end",
+			toolName: "write_to_file",
+			ok: true,
+			toolParams: {
+				path: "src/ok/file.ts",
+				content: "const x = 1\n",
+				intent_id: "INT-003",
+				mutation_class: "AST_REFACTOR",
+			},
+		} as any)
+
+		const ledgerPath = path.join(tempDir, ".orchestration", "agent_trace.jsonl")
+		const content = await fs.readFile(ledgerPath, "utf-8")
+		const lines = content.trim().split("\n")
+		expect(lines.length).toBeGreaterThan(0)
+
+		const last = JSON.parse(lines[lines.length - 1])
+		expect(last.intent_id).toBe("INT-003")
+		expect(last.files[0].conversations[0].ranges[0].content_hash).toMatch(/^sha256:/)
 	})
 })

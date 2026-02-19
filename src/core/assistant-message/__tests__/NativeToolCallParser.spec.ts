@@ -49,6 +49,52 @@ describe("NativeToolCallParser", () => {
 			})
 		})
 
+		describe("write_to_file tool", () => {
+			it("should parse write_to_file with intent_id and mutation_class", () => {
+				const toolCall = {
+					id: "toolu_write_001",
+					name: "write_to_file" as const,
+					arguments: JSON.stringify({
+						path: "src/new-file.ts",
+						content: "export const x = 1\n",
+						intent_id: "INT-003",
+						mutation_class: "AST_REFACTOR",
+					}),
+				}
+
+				const result = NativeToolCallParser.parseToolCall(toolCall)
+
+				expect(result).not.toBeNull()
+				expect(result?.type).toBe("tool_use")
+				if (result?.type === "tool_use") {
+					const nativeArgs = result.nativeArgs as {
+						path: string
+						content: string
+						intent_id: string
+						mutation_class: string
+					}
+					expect(nativeArgs.path).toBe("src/new-file.ts")
+					expect(nativeArgs.intent_id).toBe("INT-003")
+					expect(nativeArgs.mutation_class).toBe("AST_REFACTOR")
+				}
+			})
+
+			it("should reject write_to_file when intent_id is missing", () => {
+				const toolCall = {
+					id: "toolu_write_002",
+					name: "write_to_file" as const,
+					arguments: JSON.stringify({
+						path: "src/new-file.ts",
+						content: "export const x = 1\n",
+						mutation_class: "AST_REFACTOR",
+					}),
+				}
+
+				const result = NativeToolCallParser.parseToolCall(toolCall)
+				expect(result).toBeNull()
+			})
+		})
+
 		describe("read_file tool", () => {
 			it("should parse minimal single-file read_file args", () => {
 				const toolCall = {

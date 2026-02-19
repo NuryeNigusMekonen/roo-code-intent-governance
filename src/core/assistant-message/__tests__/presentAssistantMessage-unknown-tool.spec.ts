@@ -258,7 +258,12 @@ describe("presentAssistantMessage - Unknown Tool Handling", () => {
 				type: "tool_use",
 				id: toolCallId,
 				name: "write_to_file",
-				params: { path: "src/test.ts", content: "x" },
+				params: {
+					path: "src/test.ts",
+					content: "x",
+					intent_id: "INT-003",
+					mutation_class: "AST_REFACTOR",
+				},
 				partial: false,
 			},
 		]
