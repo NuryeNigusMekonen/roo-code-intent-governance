@@ -457,6 +457,7 @@ export async function presentAssistantMessage(cline: Task) {
 						type: "tool_end",
 						toolCallId: sanitizeToolUseId(toolCallId),
 						toolName: block.name,
+						toolParams: block.nativeArgs ?? block.params,
 						ok,
 					})
 					hasToolEndTrace = true

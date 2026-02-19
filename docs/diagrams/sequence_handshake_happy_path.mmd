@@ -1,0 +1,16 @@
+sequenceDiagram
+    participant U as User
+    participant A as Agent
+    participant H as HookEngine
+    participant L as Ledger(.orchestration/agent_trace.jsonl)
+
+    U->>A: Tool call payload {"name":"select_active_intent","params":{"intent_id":"INT-003"}}
+    A->>H: pre_tool_use {"toolName":"select_active_intent","toolParams":{"intent_id":"INT-003"}}
+    H-->>A: allowed
+    A->>A: task.activeIntentId = "INT-003"
+
+    U->>A: Tool call payload {"name":"write_to_file","params":{"path":"src/core/task/example.ts","content":"export const x = 1;\n","intent_id":"INT-003","mutation_class":"AST_REFACTOR"}}
+    A->>H: pre_tool_use {"toolName":"write_to_file","toolParams":{"path":"src/core/task/example.ts","intent_id":"INT-003","mutation_class":"AST_REFACTOR"},"activeIntentId":"INT-003"}
+    H-->>A: allowed
+    A->>H: tool_end {"toolName":"write_to_file","ok":true,"toolParams":{"path":"src/core/task/example.ts","content":"export const x = 1;\n","intent_id":"INT-003","mutation_class":"AST_REFACTOR"}}
+    H->>L: append JSONL record {"intent_id":"INT-003","mutation_class":"AST_REFACTOR","files":[{"relative_path":"src/core/task/example.ts"}]}

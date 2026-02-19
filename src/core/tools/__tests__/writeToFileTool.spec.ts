@@ -213,11 +213,15 @@ describe("writeToFileTool", () => {
 			params: {
 				path: testFilePath,
 				content: testContent,
+				intent_id: "INT-003",
+				mutation_class: "AST_REFACTOR",
 				...params,
 			},
 			nativeArgs: {
 				path: (params.path ?? testFilePath) as any,
 				content: (params.content ?? testContent) as any,
+				intent_id: (params.intent_id ?? "INT-003") as any,
+				mutation_class: (params.mutation_class ?? "AST_REFACTOR") as any,
 			},
 			partial: isPartial,
 		}

@@ -1,0 +1,9 @@
+sequenceDiagram
+    participant U as User
+    participant A as Agent
+    participant H as HookEngine
+
+    U->>A: Tool call payload {"name":"execute_command","params":{"command":"rm -rf src/tmp"}}
+    A->>H: pre_tool_use {"toolName":"execute_command","toolParams":{"command":"rm -rf src/tmp"},"activeIntentId":"INT-003"}
+    H-->>A: blocked {"errorCode":"HITL_REJECTED","reason":"Destructive operation rejected by user."}
+    A-->>U: tool_result {"error":{"code":"HITL_REJECTED","message":"Destructive operation rejected by user.","recoverable":true}}
