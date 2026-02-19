@@ -4,8 +4,10 @@ import * as path from "path"
 import type { Task } from "../task/Task"
 import { createOwnedScopeEnforcer } from "./scopeEnforcer"
 import { createDestructiveCommandApprovalHook } from "./commandApproval"
-import { appendAgentTraceRecord } from "../trace/agentTraceLedger"
+import { appendAgentTraceRecord, sha256 } from "../trace/agentTraceLedger"
 import type { MutationClass } from "../trace/agentTraceLedger"
+import { appendLesson, isVerificationCommand } from "../orchestration/lessons"
+import { fileExistsAtPath } from "../../utils/fs"
 
 const SAFE_READ_PATTERNS: RegExp[] = [
 	/^\s*pwd\b/i,
@@ -79,6 +81,27 @@ function extractWritePath(toolParams: unknown): string | null {
 	return null
 }
 
+function isToolEndFailure(e: HookEvent): boolean {
+	if (e.type !== "tool_end") {
+		return false
+	}
+
+	const errorCode = (e as { errorCode?: unknown }).errorCode
+	if (typeof errorCode === "string" && errorCode.length > 0) {
+		return true
+	}
+
+	const toolResult = (e as { toolResult?: unknown }).toolResult
+	if (typeof toolResult === "string") {
+		const exitCodeMatch = toolResult.match(/Exit code:\s*(\d+)/i)
+		if (exitCodeMatch) {
+			return Number(exitCodeMatch[1]) !== 0
+		}
+	}
+
+	return false
+}
+
 function extractIntentId(toolParams: unknown): string | null {
 	if (!toolParams || typeof toolParams !== "object") {
 		return null
@@ -106,7 +129,7 @@ function getDeterministicValidationError(toolName: string): string {
 }
 
 export function registerDefaultHooks(engine: HookEngine, task: Task) {
-	engine.register("intent-gatekeeper", 5, (e: HookEvent) => {
+	engine.register("intent-gatekeeper", 5, async (e: HookEvent) => {
 		if (e.type !== "pre_tool_use") return
 
 		if (e.toolName === "select_active_intent") return
@@ -147,6 +170,43 @@ export function registerDefaultHooks(engine: HookEngine, task: Task) {
 			e.blocked = true
 			e.reason = getDeterministicValidationError(e.toolName)
 			e.errorCode = "SCOPE_VIOLATION"
+			return
+		}
+
+		if (e.toolName !== "write_to_file") {
+			return
+		}
+
+		const relPath = extractWritePath(e.toolParams)
+		if (!relPath) {
+			return
+		}
+
+		if (typeof task.cwd !== "string" || task.cwd.length === 0) {
+			return
+		}
+
+		const fullPath = path.resolve(task.cwd, relPath)
+		if (!(await fileExistsAtPath(fullPath))) {
+			return
+		}
+
+		const lastReadHash = task.getLastReadHash?.(relPath)
+		if (!lastReadHash) {
+			e.blocked = true
+			e.reason = "Stale write protection: no prior read recorded for this file. Read it first."
+			return
+		}
+
+		try {
+			const currentContent = await fs.readFile(fullPath, "utf-8")
+			const currentHash = sha256(currentContent)
+			if (currentHash !== lastReadHash) {
+				e.blocked = true
+				e.reason = "Stale write protection: file changed since last read. Re-read and retry."
+			}
+		} catch {
+			// If file cannot be read, avoid false-positive blocking here and let tool handle IO errors.
 		}
 	})
 
@@ -211,6 +271,45 @@ export function registerDefaultHooks(engine: HookEngine, task: Task) {
 			})
 		} catch (err) {
 			console.warn("appendAgentTraceRecord failed", err)
+		}
+	})
+
+	engine.register("lessons-recorder", 12, async (e: HookEvent) => {
+		if (e.type !== "tool_end" || e.toolName !== "execute_command") {
+			return
+		}
+
+		if (!isToolEndFailure(e)) {
+			return
+		}
+
+		const command = getCommandFromParams((e as { toolParams?: unknown }).toolParams)
+		if (!command || !isVerificationCommand(command)) {
+			return
+		}
+
+		const reason =
+			typeof (e as { reason?: unknown }).reason === "string" ? ((e as { reason?: string }).reason ?? "") : ""
+		const errorCode =
+			typeof (e as { errorCode?: unknown }).errorCode === "string"
+				? ((e as { errorCode?: string }).errorCode ?? "")
+				: ""
+		const toolResult =
+			typeof (e as { toolResult?: unknown }).toolResult === "string"
+				? ((e as { toolResult?: string }).toolResult ?? "")
+				: ""
+		const exitCodeLine = toolResult.split("\n").find((line) => /^\s*Exit code\s*:/i.test(line.trim()))
+		const errorSummary =
+			[reason, errorCode, exitCodeLine].filter(Boolean).join(" | ") || "Command ended with non-zero or error"
+
+		try {
+			await appendLesson(task, {
+				intentId: task.activeIntentId ?? "unknown",
+				command,
+				errorSummary,
+			})
+		} catch (err) {
+			console.warn("appendLesson failed", err)
 		}
 	})
 }
