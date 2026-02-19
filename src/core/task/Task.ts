@@ -117,6 +117,7 @@ import {
 	taskMetadata,
 } from "../task-persistence"
 import { getEnvironmentDetails } from "../environment/getEnvironmentDetails"
+import { nowRfc3339, sha256 } from "../trace/agentTraceLedger"
 import { checkContextWindowExceededError } from "../context/context-management/context-error-handling"
 import {
 	type CheckpointDiffOptions,
@@ -177,6 +178,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	todoList?: TodoItem[]
 	activeIntentId: string | null = null
 	activeIntent: IntentDef | null = null
+	lastReadHashByPath: Record<string, string> = {}
+	lastReadAtByPath: Record<string, string> = {}
 
 	readonly rootTask: Task | undefined = undefined
 	readonly parentTask: Task | undefined = undefined
@@ -758,6 +761,16 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	public setActiveIntent(intentId: string | null, intent: IntentDef | null): void {
 		this.activeIntentId = intentId
 		this.activeIntent = intent
+	}
+
+	public recordFileRead(relativePath: string, content: string): void {
+		const hash = sha256(content)
+		this.lastReadHashByPath[relativePath] = hash
+		this.lastReadAtByPath[relativePath] = nowRfc3339()
+	}
+
+	public getLastReadHash(relativePath: string): string | undefined {
+		return this.lastReadHashByPath[relativePath]
 	}
 
 	/**
