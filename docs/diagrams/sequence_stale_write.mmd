@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant A as Agent
+    participant H as HookEngine
+    participant D as Disk
+
+    A->>H: pre_tool_use {"toolName":"write_to_file","toolParams":{"relative_path":"src/core/hooks/registerDefaultHooks.ts"}}
+    H->>H: lookup lastReadHash by relative_path
+    H->>D: read current file content
+    D-->>H: current content
+    H->>H: compute currentHash
+    alt missing lastReadHash
+        H-->>A: blocked {"reason":"Stale write protection: no prior read recorded for this file. Read it first.","relative_path":"src/core/hooks/registerDefaultHooks.ts","lastReadHash":"","currentHash":"sha256:..."}
+    else hash mismatch
+        H-->>A: blocked {"reason":"Stale write protection: file changed since last read. Re-read and retry.","relative_path":"src/core/hooks/registerDefaultHooks.ts","lastReadHash":"sha256:...","currentHash":"sha256:..."}
+    else hash match
+        H-->>A: allow {"relative_path":"src/core/hooks/registerDefaultHooks.ts","lastReadHash":"sha256:...","currentHash":"sha256:..."}
+    end
+

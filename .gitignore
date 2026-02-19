@@ -55,3 +55,9 @@ qdrant_storage/
 plans/
 
 roo-cli-*.tar.gz*
+
+# Commit required orchestration sidecar artifacts
+!.orchestration/
+!.orchestration/active_intents.yaml
+!.orchestration/intent_map.md
+!.orchestration/agent_trace.jsonl
