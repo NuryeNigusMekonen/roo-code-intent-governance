@@ -1,0 +1,9 @@
+sequenceDiagram
+    participant U as User
+    participant A as Agent
+    participant H as HookEngine
+
+    U->>A: Tool call payload {"name":"write_to_file","params":{"path":"src/outside/file.ts","content":"x","intent_id":"INT-999","mutation_class":"AST_REFACTOR"}}
+    A->>H: pre_tool_use {"toolName":"write_to_file","toolParams":{"path":"src/outside/file.ts","intent_id":"INT-999","mutation_class":"AST_REFACTOR"},"activeIntentId":"INT-003"}
+    H-->>A: blocked {"errorCode":"SCOPE_VIOLATION","reason":"Write-like tool 'write_to_file' requires active intent handshake and valid params: intent_id must equal active intent, mutation_class must be AST_REFACTOR or INTENT_EVOLUTION."}
+    A-->>U: tool_result {"error":{"code":"SCOPE_VIOLATION","message":"Write-like tool 'write_to_file' requires active intent handshake and valid params: intent_id must equal active intent, mutation_class must be AST_REFACTOR or INTENT_EVOLUTION.","recoverable":true}}
