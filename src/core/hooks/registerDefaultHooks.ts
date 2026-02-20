@@ -223,9 +223,10 @@ export function registerDefaultHooks(engine: HookEngine, task: Task) {
 	})
 
 	engine.register("agent-trace-ledger", 11, async (e: HookEvent) => {
-		if (e.type !== "tool_end" || e.ok !== true) {
-			return
-		}
+		console.log("[ledger]", e.type, e.toolName, e.ok, e.errorCode)
+
+		if (e.type !== "tool_end") return
+		if (isToolEndFailure(e)) return
 
 		if (!isWriteLikeTool(e.toolName)) {
 			return
