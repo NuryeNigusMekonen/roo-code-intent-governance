@@ -1,25 +1,105 @@
 active_intents:
   - id: "INT-001"
-    name: "Add safe math functions"
+    title: "Build Weather API"
+    description: "Add a /forecast endpoint and unit tests."
     status: "COMPLETED"
-    started_at: "2026-02-20T15:00:00Z"
-    completed_at: "2026-02-20T15:20:00Z"
+    status_history:
+      - status: "PENDING"
+        at: "2026-02-18T09:00:00Z"
+      - status: "IN_PROGRESS"
+        at: "2026-02-19T10:15:00Z"
+      - status: "COMPLETED"
+        at: "2026-02-20T14:40:00Z"
     owned_scope:
-      - "src/**"
+      - "src/weather/**"
     constraints:
-      - "No new dependencies"
-      - "Must add unit tests"
+      - "No external HTTP calls in tests"
+      - "Keep changes inside owned_scope"
     acceptance_criteria:
-      - "All tests pass"
+      - "Unit tests for /forecast pass"
+      - "No external network dependency in test environment"
+    last_verification:
+      command: "pnpm -C src test"
+      at: "2026-02-20T14:39:20Z"
+      ok: true
 
   - id: "INT-002"
-    name: "Docs and mapping"
+    title: "Refactor Trace Writer"
+    description: "Improve trace writer performance without schema change."
     status: "IN_PROGRESS"
-    started_at: "2026-02-20T15:20:00Z"
+    status_history:
+      - status: "PENDING"
+        at: "2026-02-18T09:05:00Z"
+      - status: "IN_PROGRESS"
+        at: "2026-02-20T15:10:00Z"
     owned_scope:
-      - "README.md"
+      - "src/utils/**"
+      - "src/core/task/**"
+    constraints:
+      - "Keep JSONL schema backward compatible"
+    acceptance_criteria:
+      - "Trace writer performance improved"
+      - "All existing tests pass"
+      - "JSONL structure unchanged"
+    last_verification:
+      command: "pnpm -C src test"
+      at: "2026-02-20T15:08:00Z"
+      ok: true
+
+  - id: "INT-003"
+    title: "Agent Trace ledger Phase 3"
+    description: "Append deterministic mutation ledger records for successful write-like tool calls."
+    status: "COMPLETED"
+    status_history:
+      - status: "PENDING"
+        at: "2026-02-18T11:00:00Z"
+      - status: "IN_PROGRESS"
+        at: "2026-02-19T17:30:00Z"
+      - status: "COMPLETED"
+        at: "2026-02-19T18:10:00Z"
+    owned_scope:
+      - "src/core/hooks/**"
+      - "src/core/task/**"
+      - "src/core/tools/**"
+      - "src/core/intents/**"
       - ".orchestration/**"
     constraints:
-      - "Keep docs short"
+      - "No breaking changes to existing tests"
+      - "Keep hooks deterministic"
+      - "Append-only agent_trace.jsonl, one JSON object per line"
     acceptance_criteria:
-      - "intent_map.md updated"
+      - "Every successful write-like tool call appends ledger entry"
+      - "Ledger includes intent_id and mutation_class"
+      - "Content hash stored per file mutation"
+    last_verification:
+      command: "pnpm -C src test"
+      at: "2026-02-19T18:09:30Z"
+      ok: true
+
+  - id: "INT-004"
+    title: "Parallel Orchestration and Optimistic Locking"
+    description: "Prevent stale writes and append lessons on verification failures."
+    status: "COMPLETED"
+    status_history:
+      - status: "PENDING"
+        at: "2026-02-19T18:30:00Z"
+      - status: "IN_PROGRESS"
+        at: "2026-02-20T09:20:00Z"
+      - status: "COMPLETED"
+        at: "2026-02-20T11:05:00Z"
+    owned_scope:
+      - "src/core/hooks/**"
+      - "src/core/task/**"
+      - "src/core/orchestration/**"
+      - ".orchestration/**"
+    constraints:
+      - "Block stale writes if file hash changed"
+      - "Append lessons only on failed verification commands"
+    acceptance_criteria:
+      - "Write blocked when last read hash mismatches"
+      - "CLAUDE.md or AGENT.md updated on failed checks"
+      - "All tests pass"
+    last_verification:
+      command: "pnpm -C src test"
+      at: "2026-02-20T11:04:10Z"
+      ok: true
