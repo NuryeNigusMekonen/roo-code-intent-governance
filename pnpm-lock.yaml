@@ -572,7 +572,7 @@ importers:
         version: 7.0.5
       openai:
         specifier: ^5.12.2
-        version: 5.12.2(ws@8.18.3)(zod@3.25.76)
+        version: 5.12.2(ws@8.19.0)(zod@3.25.76)
       zod:
         specifier: 3.25.76
         version: 3.25.76
@@ -765,8 +765,8 @@ importers:
         specifier: ^2.0.32
         version: 2.0.32(zod@3.25.76)
       '@ai-sdk/google':
-        specifier: ^3.0.22
-        version: 3.0.22(zod@3.25.76)
+        specifier: ^3.0.29
+        version: 3.0.29(zod@3.25.76)
       '@ai-sdk/google-vertex':
         specifier: ^4.0.45
         version: 4.0.45(zod@3.25.76)
@@ -913,7 +913,7 @@ importers:
         version: 0.5.17
       openai:
         specifier: ^5.12.2
-        version: 5.12.2(ws@8.18.3)(zod@3.25.76)
+        version: 5.12.2(ws@8.19.0)(zod@3.25.76)
       os-name:
         specifier: ^6.0.0
         version: 6.1.0
@@ -1477,6 +1477,12 @@ packages:
     peerDependencies:
       zod: 3.25.76
 
+  '@ai-sdk/google@3.0.29':
+    resolution: {integrity: sha512-x0hcU10AA+i1ZUQHloGD5qXWsB+Y8qnxlmFUef6Ly4rB53MGVbQExkI9nOKiCO3mu2TGiiNoQMeKWSeQVLfRUA==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: 3.25.76
+
   '@ai-sdk/mistral@3.0.19':
     resolution: {integrity: sha512-yd0OJ3fm2YKdwxh1pd9m720sENVVcylAD+Bki8C80QqVpUxGNL1/C4N4JJGb56eCCWr6VU/3gHFe9PKui9n/Hg==}
     engines: {node: '>=18'}
@@ -1503,6 +1509,12 @@ packages:
 
   '@ai-sdk/provider-utils@4.0.14':
     resolution: {integrity: sha512-7bzKd9lgiDeXM7O4U4nQ8iTxguAOkg8LZGD9AfDVZYjO5cKYRwBPwVjboFcVrxncRHu0tYxZtXZtiLKpG4pEng==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: 3.25.76
+
+  '@ai-sdk/provider-utils@4.0.15':
+    resolution: {integrity: sha512-8XiKWbemmCbvNN0CLR9u3PQiet4gtEVIrX4zzLxnCj06AwsEDJwJVBbKrEI4t6qE8XRSIvU2irka0dcpziKW6w==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: 3.25.76
@@ -1741,6 +1753,10 @@ packages:
     resolution: {integrity: sha512-cjQ7ZlQ0Mv3b47hABuTevyTuYN4i+loJKGeV9flcCgIK37cCXRh+L1bd3iBHlynerhQ7BhCkn2BPbQUL+rGqFg==}
     engines: {node: '>=6.9.0'}
 
+  '@babel/code-frame@7.29.0':
+    resolution: {integrity: sha512-9NhCeYjq9+3uxgdtp20LSiJXJvN0FeCtNGpJxuMFZ1Kv3cWUNb6DOhJwUvcVCzKGR66cw4njwM6hrJLqgOwbcw==}
+    engines: {node: '>=6.9.0'}
+
   '@babel/compat-data@7.27.2':
     resolution: {integrity: sha512-TUtMJYRPyUb/9aU8f3K0mjmjf6M9N5Woshn2CS6nqJSeJtTtQcpLUXjGt9vbF8ZGff0El99sWkLgzwW3VXnxZQ==}
     engines: {node: '>=6.9.0'}
@@ -1777,6 +1793,10 @@ packages:
 
   '@babel/helper-validator-identifier@7.27.1':
     resolution: {integrity: sha512-D2hP9eA+Sqx1kBZgzxZh0y1trbuU+JoDkiEwqhQ36nodYqJwyEIhPSdMNd7lOm/4io72luTPWH20Yda0xOuUow==}
+    engines: {node: '>=6.9.0'}
+
+  '@babel/helper-validator-identifier@7.28.5':
+    resolution: {integrity: sha512-qSs4ifwzKJSV39ucNjsvc6WVHs6b7S03sOh2OcHF9UHfVPqWWALUsNUVzhSBiItjRZoLHx7nIarVjqKVusUZ1Q==}
     engines: {node: '>=6.9.0'}
 
   '@babel/helper-validator-option@7.27.1':
@@ -1818,6 +1838,10 @@ packages:
 
   '@babel/runtime@7.28.4':
     resolution: {integrity: sha512-Q/N6JNWvIvPnLDvjlE1OUBLPQHH6l3CltCEsHIujp45zQUSSh8K+gHnaEX45yAT1nyngnINhvWtzN+Nb9D8RAQ==}
+    engines: {node: '>=6.9.0'}
+
+  '@babel/runtime@7.28.6':
+    resolution: {integrity: sha512-05WQkdpL9COIMz4LjTxGpPNCdlpyimKppYNoJ5Di5EUObifl8t4tuLuUBBZEpoLYOmfvIWrsp9fCl0HoPRVTdA==}
     engines: {node: '>=6.9.0'}
 
   '@babel/template@7.27.2':
@@ -9626,6 +9650,11 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
+  semver@7.7.4:
+    resolution: {integrity: sha512-vFKC2IEtQnVhpT78h1Yp8wzwrf8CM+MzKMHGJZfBtzhZNycRFnXsHk6E5TxIkkMsgNS7mdX3AGB7x2QM2di4lA==}
+    engines: {node: '>=10'}
+    hasBin: true
+
   send@1.2.0:
     resolution: {integrity: sha512-uaW0WwXKpL9blXE2o0bRhoL2EGXIrZxQ2ZQ4mgcfoBxdFmQold+qWsD2jLrfZ0trjKL6vOw0j//eAwcALFjKSw==}
     engines: {node: '>= 18'}
@@ -10989,6 +11018,18 @@ packages:
       utf-8-validate:
         optional: true
 
+  ws@8.19.0:
+    resolution: {integrity: sha512-blAT2mjOEIi0ZzruJfIhb3nps74PRWTCz1IjglWEEpQl5XS/UNama6u2/rjFkDDouqr4L67ry+1aGIALViWjDg==}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
+
   xml-name-validator@5.0.0:
     resolution: {integrity: sha512-EvGK8EJ3DhaHfbRlETOWAS5pO9MZITeauHKJyb8wyajUfQUenkIg2MvLDTZ4T/TgIcm3HU0TFBgWWboAZ30UHg==}
     engines: {node: '>=18'}
@@ -11209,6 +11250,12 @@ snapshots:
       '@ai-sdk/provider-utils': 4.0.14(zod@3.25.76)
       zod: 3.25.76
 
+  '@ai-sdk/google@3.0.29(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider': 3.0.8
+      '@ai-sdk/provider-utils': 4.0.15(zod@3.25.76)
+      zod: 3.25.76
+
   '@ai-sdk/mistral@3.0.19(zod@3.25.76)':
     dependencies:
       '@ai-sdk/provider': 3.0.8
@@ -11236,6 +11283,13 @@ snapshots:
       zod-to-json-schema: 3.24.5(zod@3.25.76)
 
   '@ai-sdk/provider-utils@4.0.14(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider': 3.0.8
+      '@standard-schema/spec': 1.1.0
+      eventsource-parser: 3.0.6
+      zod: 3.25.76
+
+  '@ai-sdk/provider-utils@4.0.15(zod@3.25.76)':
     dependencies:
       '@ai-sdk/provider': 3.0.8
       '@standard-schema/spec': 1.1.0
@@ -11873,6 +11927,12 @@ snapshots:
       js-tokens: 4.0.0
       picocolors: 1.1.1
 
+  '@babel/code-frame@7.29.0':
+    dependencies:
+      '@babel/helper-validator-identifier': 7.28.5
+      js-tokens: 4.0.0
+      picocolors: 1.1.1
+
   '@babel/compat-data@7.27.2': {}
 
   '@babel/core@7.27.1':
@@ -11933,6 +11993,8 @@ snapshots:
 
   '@babel/helper-validator-identifier@7.27.1': {}
 
+  '@babel/helper-validator-identifier@7.28.5': {}
+
   '@babel/helper-validator-option@7.27.1': {}
 
   '@babel/helpers@7.27.1':
@@ -11961,6 +12023,8 @@ snapshots:
   '@babel/runtime@7.28.3': {}
 
   '@babel/runtime@7.28.4': {}
+
+  '@babel/runtime@7.28.6': {}
 
   '@babel/template@7.27.2':
     dependencies:
@@ -12716,7 +12780,7 @@ snapshots:
   '@libsql/isomorphic-ws@0.1.5':
     dependencies:
       '@types/ws': 8.18.1
-      ws: 8.18.3
+      ws: 8.19.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -14497,8 +14561,8 @@ snapshots:
 
   '@testing-library/dom@10.4.0':
     dependencies:
-      '@babel/code-frame': 7.27.1
-      '@babel/runtime': 7.28.4
+      '@babel/code-frame': 7.29.0
+      '@babel/runtime': 7.28.6
       '@types/aria-query': 5.0.4
       aria-query: 5.3.0
       chalk: 4.1.2
@@ -17374,7 +17438,7 @@ snapshots:
       '@petamoriken/float16': 3.9.3
       debug: 4.4.3
       env-paths: 3.0.0
-      semver: 7.7.3
+      semver: 7.7.4
       shell-quote: 1.8.3
       which: 4.0.0
     transitivePeerDependencies:
@@ -19526,9 +19590,9 @@ snapshots:
       is-inside-container: 1.0.0
       is-wsl: 3.1.0
 
-  openai@5.12.2(ws@8.18.3)(zod@3.25.76):
+  openai@5.12.2(ws@8.19.0)(zod@3.25.76):
     optionalDependencies:
-      ws: 8.18.3
+      ws: 8.19.0
       zod: 3.25.76
 
   option@0.2.4: {}
@@ -20689,6 +20753,9 @@ snapshots:
   semver@7.7.2: {}
 
   semver@7.7.3: {}
+
+  semver@7.7.4:
+    optional: true
 
   send@1.2.0:
     dependencies:
@@ -22346,6 +22413,9 @@ snapshots:
   ws@8.18.2: {}
 
   ws@8.18.3: {}
+
+  ws@8.19.0:
+    optional: true
 
   xml-name-validator@5.0.0: {}
 
